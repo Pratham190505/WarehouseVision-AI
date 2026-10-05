@@ -1,0 +1,274 @@
+/*
+ * WarehouseVision AI - Authentication Stylesheet
+ * High-performance, modern glassmorphic auth cards with dark/light theme support.
+ */
+
+.auth-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.5rem;
+    background: radial-gradient(circle at 10% 20%, rgba(79, 106, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+                var(--bg-primary);
+    position: relative;
+    overflow: hidden;
+}
+
+.auth-bg-grid {
+    position: absolute;
+    inset: 0;
+    background-size: 32px 32px;
+    background-image: 
+        linear-gradient(to right, rgba(120, 140, 180, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(120, 140, 180, 0.05) 1px, transparent 1px);
+    pointer-events: none;
+}
+
+.auth-theme-toggle {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.auth-theme-toggle:hover {
+    transform: scale(1.06);
+    border-color: var(--primary);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(0, 0, 0, 0.03);
+    padding: 2.5rem 2.25rem;
+    position: relative;
+    z-index: 1;
+    backdrop-filter: blur(12px);
+    animation: authFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes authFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.auth-brand {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.auth-logo-badge {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 1rem;
+    background: linear-gradient(135deg, #4F6AFF 0%, #10B981 100%);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #FFFFFF;
+    font-weight: 800;
+    box-shadow: 0 8px 20px rgba(79, 106, 255, 0.28);
+}
+
+.auth-brand h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.4rem;
+    letter-spacing: -0.02em;
+}
+
+.auth-brand p {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Alert Notification */
+.auth-alert {
+    padding: 0.8rem 1rem;
+    border-radius: 10px;
+    font-size: 0.86rem;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+    display: none;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.auth-alert.error {
+    display: flex;
+    background: var(--danger-light);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.auth-alert.success {
+    display: flex;
+    background: var(--success-light);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Form Groups */
+.form-group {
+    margin-bottom: 1.25rem;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.83rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.45rem;
+    letter-spacing: 0.01em;
+}
+
+.input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-icon {
+    position: absolute;
+    left: 1rem;
+    font-size: 1rem;
+    color: var(--text-tertiary);
+    pointer-events: none;
+    user-select: none;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.78rem 1rem 0.78rem 2.65rem;
+    font-size: 0.92rem;
+    font-family: inherit;
+    border-radius: 10px;
+    border: 1.5px solid var(--border-color);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.form-control:focus {
+    border-color: var(--primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+.toggle-password-btn {
+    position: absolute;
+    right: 0.85rem;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0.25rem;
+    transition: color 0.2s ease;
+}
+
+.toggle-password-btn:hover {
+    color: var(--text-primary);
+}
+
+/* Primary Submit Button */
+.btn-auth-submit {
+    width: 100%;
+    padding: 0.85rem 1.2rem;
+    background: linear-gradient(135deg, #4F6AFF 0%, #3B53E0 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 6px 16px rgba(79, 106, 255, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.btn-auth-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(79, 106, 255, 0.35);
+}
+
+.btn-auth-submit:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn-auth-submit:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.auth-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #FFFFFF;
+    border-radius: 50%;
+    animation: authSpin 0.7s linear infinite;
+    display: none;
+}
+
+@keyframes authSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* Footer Switcher */
+.auth-footer {
+    text-align: center;
+    margin-top: 1.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+}
+
+.auth-footer a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+    margin-left: 0.3rem;
+    transition: color 0.15s ease;
+}
+
+.auth-footer a:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}

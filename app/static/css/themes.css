@@ -1,0 +1,216 @@
+/*
+ * WarehouseVision AI - Theme System
+ * Complete Light/Dark theme with CSS custom properties.
+ */
+
+/* ===== Google Fonts ===== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ===== Light Theme (Default) ===== */
+:root {
+    /* Background */
+    --bg-primary: #F4F6FA;
+    --bg-secondary: #EEF1F6;
+    --bg-card: #FFFFFF;
+    --bg-card-hover: #FAFBFD;
+    --bg-sidebar: #FFFFFF;
+    --bg-header: rgba(255, 255, 255, 0.85);
+    --bg-input: #F4F6FA;
+    --bg-overlay: rgba(0, 0, 0, 0.4);
+    --bg-upload: #F8FAFC;
+    --bg-upload-hover: #EEF2FF;
+    --bg-badge: #F0F4FF;
+    --bg-code: #F1F5F9;
+    --bg-tooltip: #1E293B;
+
+    /* Text */
+    --text-primary: #111827;
+    --text-secondary: #6B7280;
+    --text-tertiary: #9CA3AF;
+    --text-inverse: #FFFFFF;
+    --text-link: #4F6AFF;
+
+    /* Borders */
+    --border-color: #E5E7EB;
+    --border-light: #F3F4F6;
+    --border-focus: #4F6AFF;
+
+    /* Primary / Accent */
+    --primary: #4F6AFF;
+    --primary-hover: #3B53E0;
+    --primary-light: #EEF2FF;
+    --primary-dark: #3347CC;
+    --primary-glow: rgba(79, 106, 255, 0.15);
+
+    /* Semantic Colors */
+    --success: #10B981;
+    --success-light: #ECFDF5;
+    --success-dark: #059669;
+    --warning: #F59E0B;
+    --warning-light: #FFFBEB;
+    --warning-dark: #D97706;
+    --danger: #EF4444;
+    --danger-light: #FEF2F2;
+    --danger-dark: #DC2626;
+    --info: #06B6D4;
+    --info-light: #ECFEFF;
+
+    /* Chart Colors */
+    --chart-1: #4F6AFF;
+    --chart-2: #10B981;
+    --chart-3: #F59E0B;
+    --chart-4: #8B5CF6;
+    --chart-5: #EC4899;
+    --chart-6: #06B6D4;
+    --chart-grid: rgba(0, 0, 0, 0.06);
+    --chart-text: #6B7280;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.1);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
+    --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-sidebar: 2px 0 12px rgba(0, 0, 0, 0.04);
+    --shadow-glow: 0 0 20px rgba(79, 106, 255, 0.15);
+
+    /* Radii */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-full: 9999px;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Typography */
+    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.8125rem;
+    --font-size-base: 0.875rem;
+    --font-size-md: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 1.875rem;
+    --font-size-4xl: 2.25rem;
+
+    /* Layout */
+    --sidebar-width: 72px;
+    --sidebar-expanded: 240px;
+    --header-height: 64px;
+    --content-max-width: 1440px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 250ms ease;
+    --transition-slow: 400ms ease;
+    --transition-theme: 350ms ease;
+
+    /* Scrollbar */
+    --scrollbar-bg: #F1F5F9;
+    --scrollbar-thumb: #CBD5E1;
+    --scrollbar-thumb-hover: #94A3B8;
+
+    /* KPI icon backgrounds */
+    --kpi-workers-bg: #EEF2FF;
+    --kpi-workers-color: #4F6AFF;
+    --kpi-forklifts-bg: #ECFDF5;
+    --kpi-forklifts-color: #10B981;
+    --kpi-boxes-bg: #FFF7ED;
+    --kpi-boxes-color: #F59E0B;
+    --kpi-pallets-bg: #FAF5FF;
+    --kpi-pallets-color: #8B5CF6;
+    --kpi-utilization-bg: #ECFEFF;
+    --kpi-utilization-color: #06B6D4;
+}
+
+/* ===== Dark Theme ===== */
+[data-theme="dark"] {
+    --bg-primary: #0B0E14;
+    --bg-secondary: #111620;
+    --bg-card: #161B26;
+    --bg-card-hover: #1C2233;
+    --bg-sidebar: #0F1319;
+    --bg-header: rgba(15, 19, 25, 0.9);
+    --bg-input: #1C2233;
+    --bg-overlay: rgba(0, 0, 0, 0.6);
+    --bg-upload: #111620;
+    --bg-upload-hover: #1A1F35;
+    --bg-badge: #1E2640;
+    --bg-code: #1C2233;
+    --bg-tooltip: #E2E8F0;
+
+    --text-primary: #F1F5F9;
+    --text-secondary: #94A3B8;
+    --text-tertiary: #64748B;
+    --text-inverse: #0F172A;
+    --text-link: #7C93FF;
+
+    --border-color: #1E293B;
+    --border-light: #1A2332;
+    --border-focus: #5B7AFF;
+
+    --primary: #5B7AFF;
+    --primary-hover: #7C93FF;
+    --primary-light: #1E2640;
+    --primary-dark: #4F6AFF;
+    --primary-glow: rgba(91, 122, 255, 0.2);
+
+    --success-light: #0D2818;
+    --warning-light: #2A1F06;
+    --danger-light: #2A0F0F;
+    --info-light: #0A2328;
+
+    --chart-grid: rgba(255, 255, 255, 0.06);
+    --chart-text: #94A3B8;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.35);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.2);
+    --shadow-sidebar: 2px 0 12px rgba(0, 0, 0, 0.2);
+    --shadow-glow: 0 0 20px rgba(91, 122, 255, 0.2);
+
+    --scrollbar-bg: #111620;
+    --scrollbar-thumb: #1E293B;
+    --scrollbar-thumb-hover: #334155;
+
+    --kpi-workers-bg: #1E2640;
+    --kpi-workers-color: #7C93FF;
+    --kpi-forklifts-bg: #0D2818;
+    --kpi-forklifts-color: #34D399;
+    --kpi-boxes-bg: #2A1F06;
+    --kpi-boxes-color: #FBBF24;
+    --kpi-pallets-bg: #1E1533;
+    --kpi-pallets-color: #A78BFA;
+    --kpi-utilization-bg: #0A2328;
+    --kpi-utilization-color: #22D3EE;
+}
+
+/* ===== Theme Transition ===== */
+*,
+*::before,
+*::after {
+    transition: background-color var(--transition-theme),
+                border-color var(--transition-theme),
+                color var(--transition-theme),
+                box-shadow var(--transition-theme);
+}
+
+/* Exclude specific elements from theme transitions for performance */
+canvas,
+video,
+img,
+.no-transition {
+    transition: none !important;
+}

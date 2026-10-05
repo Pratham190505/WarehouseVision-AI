@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="WarehouseVision AI — AI-Powered Warehouse Vision and Analytics Platform. Detect objects, track movements, and analyze warehouse environments.">
+    <title>WarehouseVision AI — Warehouse Analytics Dashboard</title>
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="/static/css/themes.css?v=1.2">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.2">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+    <!-- Favicon (inline SVG) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
+</head>
+<body>
+    <div class="app-layout">
+
+        <!-- ===== Sidebar ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">W</div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-section="sectionDashboard" title="Dashboard">
+                    📊
+                    <span class="nav-tooltip">Dashboard</span>
+                </button>
+                <button class="nav-item" data-section="sectionAnalytics" title="Analytics">
+                    📈
+                    <span class="nav-tooltip">Analytics</span>
+                </button>
+                <button class="nav-item" data-section="sectionUpload" title="Upload & Analyze">
+                    📤
+                    <span class="nav-tooltip">Upload / Analysis</span>
+                </button>
+                <button class="nav-item" data-section="sectionHistory" title="History">
+                    🕐
+                    <span class="nav-tooltip">History</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="theme-toggle-btn" title="Toggle Theme">🌙</button>
+                <button class="nav-item" id="sidebarSettingsBtn" title="Settings" style="margin:0;">
+                    ⚙️
+                    <span class="nav-tooltip">Settings</span>
+                </button>
+                <div class="sidebar-version">WV AI v1.0</div>
+            </div>
+        </aside>
+
+        <!-- Sidebar overlay for mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- ===== Main Content ===== -->
+        <main class="main-content">
+
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <button class="hamburger-btn" id="hamburgerBtn" title="Menu">☰</button>
+                    <div>
+                        <div class="header-title">Dashboard</div>
+                        <div class="header-subtitle">AI-Powered Warehouse Analytics</div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="header-icon-btn" title="Notifications">
+                        🔔
+                        <span class="badge"></span>
+                    </button>
+                    <button class="header-icon-btn theme-toggle-btn" title="Toggle Theme">🌙</button>
+                    <div class="header-user" id="headerUserProfile" title="Account Settings" style="cursor:pointer;" tabindex="0">
+                        <div class="avatar" id="userAvatar">{{ user.name[:2].upper() if user and user.name else 'VO' }}</div>
+                        <div class="user-info-text">
+                            <span class="user-name" id="userNameDisplay">{{ user.name if user and user.name else 'Warehouse User' }}</span>
+                            <span class="user-email" id="userEmailDisplay">{{ user.email if user and user.email else '' }}</span>
+                        </div>
+                    </div>
+                    <button class="btn-logout" id="logoutBtn" title="Sign Out">
+                        <span>🚪</span>
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Content -->
+            <div class="content">
+
+                <!-- ===== KPI Section ===== -->
+                <section id="sectionDashboard">
+                    <div class="section-header">
+                        <div>
+                            <h1 class="section-title">WarehouseVision AI</h1>
+                            <p class="section-subtitle">Real-time warehouse analytics from your latest analysis</p>
+                        </div>
+                    </div>
+
+                    <div class="kpi-grid">
+                        <div class="kpi-card kpi-workers">
+                            <div class="kpi-header">
+                                <div class="kpi-icon">👷</div>
+                                <span class="kpi-label">Workers Detected</span>
+                            </div>
+                            <div class="kpi-value" id="kpiWorkers">--</div>
+                            <div class="kpi-meta" id="kpiWorkersMeta">No data yet</div>
+                        </div>
+
+                        <div class="kpi-card kpi-forklifts">
+                            <div class="kpi-header">
+                                <div class="kpi-icon">🏗️</div>
+                                <span class="kpi-label">Forklifts Detected</span>
+                            </div>
+                            <div class="kpi-value" id="kpiForklifts">--</div>
+                            <div class="kpi-meta" id="kpiForkMeta">No data yet</div>
+                        </div>
+
+                        <div class="kpi-card kpi-boxes">
+                            <div class="kpi-header">
+                                <div class="kpi-icon">📦</div>
+                                <span class="kpi-label">Boxes Detected</span>
+                            </div>
+                            <div class="kpi-value" id="kpiBoxes">--</div>
+                            <div class="kpi-meta" id="kpiBoxesMeta">No data yet</div>
+                        </div>
+
+                        <div class="kpi-card kpi-pallets">
+                            <div class="kpi-header">
+                                <div class="kpi-icon">🎨</div>
+                                <span class="kpi-label">Pallets Detected</span>
+                            </div>
+                            <div class="kpi-value" id="kpiPallets">--</div>
+                            <div class="kpi-meta" id="kpiPalletsMeta">No data yet</div>
+                        </div>
+
+                        <div class="kpi-card kpi-utilization">
+                            <div class="kpi-header">
+                                <div class="kpi-icon">📐</div>
+                                <span class="kpi-label">Space Utilization</span>
+                            </div>
+                            <div class="kpi-value" id="kpiUtilization">--</div>
+                            <div class="kpi-meta" id="kpiUtilMeta">No data yet</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== Charts Section ===== -->
+                <section id="sectionAnalytics">
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h2 class="chart-title">Object Distribution</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="objectDistChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h2 class="chart-title">Warehouse Indicators</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="warehouseAnalyticsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Cards -->
+                    <div class="analytics-grid">
+                        <div class="analytics-card occupancy">
+                            <div class="analytics-label">Occupancy</div>
+                            <div class="analytics-value" id="analyticsOccupancy">--</div>
+                            <div class="analytics-bar">
+                                <div class="analytics-bar-fill" id="barOccupancy" style="width: 0%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-card utilization">
+                            <div class="analytics-label">Space Utilization</div>
+                            <div class="analytics-value" id="analyticsUtilization">--</div>
+                            <div class="analytics-bar">
+                                <div class="analytics-bar-fill" id="barUtilization" style="width: 0%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-card violations">
+                            <div class="analytics-label">Zone Violations</div>
+                            <div class="analytics-value" id="analyticsViolations">0</div>
+                            <div class="analytics-bar">
+                                <div class="analytics-bar-fill" id="barViolations" style="width: 0%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-card objects">
+                            <div class="analytics-label">Total Objects</div>
+                            <div class="analytics-value" id="analyticsObjects">0</div>
+                            <div class="analytics-bar">
+                                <div class="analytics-bar-fill" id="barObjects" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Space Utilization Gauge -->
+                    <div class="charts-grid" style="grid-template-columns: 1fr 1fr;">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h2 class="chart-title">Space Utilization</h2>
+                            </div>
+                            <div class="chart-container" style="min-height:180px;">
+                                <canvas id="spaceUtilChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Insights -->
+                        <div class="insights-card" style="margin-bottom:0;">
+                            <h2 class="insights-title">Warehouse Insights</h2>
+                            <ul class="insight-list" id="insightsList">
+                                <div class="insight-empty">Upload and analyze media to see insights.</div>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== Upload Section ===== -->
+                <section id="sectionUpload" class="upload-section">
+                    <div class="upload-card">
+                        <div class="upload-header">
+                            <h2 class="upload-title">Analyze Warehouse Media</h2>
+                            <p class="upload-desc">Upload an image or video to analyze your warehouse environment using AI.</p>
+                        </div>
+
+                        <div class="drop-zone" id="dropZone">
+                            <div class="drop-icon">📁</div>
+                            <div class="drop-text">Drag & drop your file here</div>
+                            <div class="drop-hint">or click to browse</div>
+                            <div class="drop-formats">
+                                <span class="format-badge">JPG</span>
+                                <span class="format-badge">JPEG</span>
+                                <span class="format-badge">PNG</span>
+                                <span class="format-badge">MP4</span>
+                                <span class="format-badge">AVI</span>
+                                <span class="format-badge">MOV</span>
+                                <span class="format-badge">MKV</span>
+                            </div>
+                        </div>
+
+                        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp,.mp4,.avi,.mov,.mkv,.wmv" hidden>
+
+                        <div class="file-info" id="fileInfo">
+                            <span class="file-icon">🖼️</span>
+                            <div class="file-details">
+                                <div class="file-name" id="fileName">--</div>
+                                <div class="file-meta" id="fileMeta">--</div>
+                            </div>
+                            <button class="file-remove" id="fileRemove" title="Remove">✕</button>
+                        </div>
+
+                        <div class="upload-actions">
+                            <button class="btn btn-secondary" id="chooseBtn">Choose File</button>
+                            <button class="btn btn-primary" id="analyzeBtn" disabled>
+                                🔍 Analyze Warehouse
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== Processing Status ===== -->
+                <div class="processing-status" id="processingStatus">
+                    <div class="status-card">
+                        <div class="status-header">
+                            <span class="status-icon" id="statusIcon">⏳</span>
+                            <div>
+                                <div class="status-text" id="statusText">Ready</div>
+                                <div class="status-detail" id="statusDetail">Upload a file to begin analysis.</div>
+                            </div>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Detection Result ===== -->
+                <section class="result-section" id="resultSection">
+                    <div class="result-card">
+                        <div class="result-header">
+                            <h2 class="result-title" id="resultTitle">Detection Result</h2>
+                        </div>
+                        <div class="result-media" id="resultMedia"></div>
+                        <div class="result-counts" id="resultCounts"></div>
+                    </div>
+                </section>
+
+                <!-- ===== History ===== -->
+                <section id="sectionHistory" class="history-section">
+                    <div class="history-card">
+                        <div class="history-header">
+                            <h2 class="history-title">Analysis History</h2>
+                        </div>
+                        <div class="history-table-wrapper">
+                            <table class="history-table">
+                                <thead>
+                                    <tr>
+                                        <th>File</th>
+                                        <th>Type</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                        <th>Workers</th>
+                                        <th>Forklifts</th>
+                                        <th>Boxes</th>
+                                        <th>Pallets</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyBody">
+                                    <tr>
+                                        <td colspan="9">
+                                            <div class="history-empty">
+                                                <div class="empty-icon">📋</div>
+                                                <div>No analysis history yet. Upload and analyze media to get started.</div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+            </div> <!-- end .content -->
+        </main>
+    </div> <!-- end .app-layout -->
+
+    <!-- ===== Analysis Details Modal ===== -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Analysis Details</h3>
+                <button class="modal-close" id="modalClose">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- ===== Settings Modal ===== -->
+    <div class="modal-overlay" id="settingsModalOverlay">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 class="modal-title" style="display:flex;align-items:center;gap:8px;">
+                    <span>⚙️</span>
+                    <span>Account & Profile Settings</span>
+                </h3>
+                <button class="modal-close" id="settingsModalClose">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="settingsForm" style="display:flex;flex-direction:column;gap:18px;">
+                    <!-- User Preview Card -->
+                    <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-md);">
+                        <div class="avatar" id="settingsAvatarPreview" style="width:48px;height:48px;font-size:18px;font-weight:700;">{{ user.name[:2].upper() if user and user.name else 'VO' }}</div>
+                        <div style="overflow:hidden;">
+                            <div id="settingsNamePreview" style="font-weight:700;font-size:15px;color:var(--text-primary);">{{ user.name if user and user.name else 'Warehouse User' }}</div>
+                            <div id="settingsEmailPreview" style="font-size:12px;color:var(--text-tertiary);">{{ user.email if user and user.email else '' }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Full Name Field -->
+                    <div class="form-group" style="margin:0;">
+                        <label for="settingsNameInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
+                            Full Name <span style="color:var(--danger)">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            id="settingsNameInput"
+                            name="name"
+                            required
+                            minlength="2"
+                            maxlength="60"
+                            placeholder="Enter your name"
+                            value="{{ user.name if user and user.name else '' }}"
+                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font-size:14px;outline:none;box-sizing:border-box;"
+                        />
+                    </div>
+
+                    <!-- Job Title / Department -->
+                    <div class="form-group" style="margin:0;">
+                        <label for="settingsDeptInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
+                            Job Title / Department
+                        </label>
+                        <input
+                            type="text"
+                            id="settingsDeptInput"
+                            name="department"
+                            maxlength="80"
+                            placeholder="e.g. Warehouse Operations Lead"
+                            value="{{ user.department if user and user.department else '' }}"
+                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font-size:14px;outline:none;box-sizing:border-box;"
+                        />
+                    </div>
+
+                    <!-- Organization / Warehouse Facility -->
+                    <div class="form-group" style="margin:0;">
+                        <label for="settingsOrgInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
+                            Warehouse / Facility Name
+                        </label>
+                        <input
+                            type="text"
+                            id="settingsOrgInput"
+                            name="organization"
+                            maxlength="100"
+                            placeholder="e.g. Distribution Center Alpha"
+                            value="{{ user.organization if user and user.organization else '' }}"
+                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font-size:14px;outline:none;box-sizing:border-box;"
+                        />
+                    </div>
+
+                    <!-- Email (Read-Only) -->
+                    <div class="form-group" style="margin:0;">
+                        <label for="settingsEmailInput" style="display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
+                            <span>Email Address</span>
+                            <span style="font-size:11px;color:var(--text-tertiary);font-weight:normal;">🔒 Read-only login ID</span>
+                        </label>
+                        <input
+                            type="email"
+                            id="settingsEmailInput"
+                            disabled
+                            value="{{ user.email if user and user.email else '' }}"
+                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text-tertiary);font-size:14px;cursor:not-allowed;box-sizing:border-box;"
+                        />
+                    </div>
+
+                    <!-- Account Role -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-input);border-radius:var(--radius-sm);font-size:13px;">
+                        <span style="color:var(--text-secondary);">Account Role</span>
+                        <span id="settingsRoleBadge" class="status-badge completed" style="text-transform:capitalize;">{{ user.role if user and user.role else 'user' }}</span>
+                    </div>
+
+                    <!-- Modal Actions -->
+                    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px;">
+                        <button type="button" class="view-btn" id="settingsCancelBtn" style="padding:9px 18px;">Cancel</button>
+                        <button type="submit" class="btn-primary" id="settingsSaveBtn" style="padding:9px 22px;display:inline-flex;align-items:center;gap:6px;">
+                            <span>💾</span>
+                            <span id="settingsSaveText">Save Changes</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Toast Container ===== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/theme.js?v=1.3"></script>
+    <script src="/static/js/charts.js?v=1.3"></script>
+    <script src="/static/js/dashboard.js?v=1.3"></script>
+</body>
+</html>

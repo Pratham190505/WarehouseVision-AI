@@ -1,0 +1,74 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# C extensions
+*.obj
+*.o
+*.a
+*.lib
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment and sensitive keys
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Uploads and processed results (user data & media)
+uploads/
+results/
+scratch/
+
+# Models (large binary YOLO/Torch weights)
+models/*.pt
+models/*.onnx
+models/*.engine
+models/*.tflite
+models/*.bin
+!models/.gitkeep
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Logs and databases
+*.log
+*.sqlite
+*.sqlite3
+
+# Docker local overrides
+docker-compose.override.yml

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="WarehouseVision AI - Secure Login to access real-time warehouse analytics.">
+    <title>Login — WarehouseVision AI</title>
+
+    <!-- Google Fonts & Stylesheets -->
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <link rel="stylesheet" href="/static/css/auth.css">
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-bg-grid"></div>
+
+        <!-- Theme Toggle -->
+        <button class="auth-theme-toggle" id="themeToggleBtn" title="Toggle Light/Dark Theme">🌙</button>
+
+        <div class="auth-card">
+            <div class="auth-brand">
+                <div class="auth-logo-badge">W</div>
+                <h1>Welcome Back</h1>
+                <p>Sign in to access your warehouse vision analytics</p>
+            </div>
+
+            <div class="auth-alert" id="authAlert" role="alert">
+                <span id="alertIcon">⚠️</span>
+                <span id="alertMessage"></span>
+            </div>
+
+            <form id="loginForm" autocomplete="on">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">✉️</span>
+                        <input 
+                            type="email" 
+                            id="email" 
+                            name="email" 
+                            class="form-control" 
+                            placeholder="name@company.com" 
+                            required 
+                            autofocus
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            class="form-control" 
+                            placeholder="Enter your password" 
+                            required
+                        >
+                        <button type="button" class="toggle-password-btn" id="togglePasswordBtn" title="Show/Hide Password">👁️</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-auth-submit" id="submitBtn">
+                    <span class="auth-spinner" id="btnSpinner"></span>
+                    <span id="btnText">Sign In to Dashboard</span>
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                Don't have an account? <a href="/signup">Create an account</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme JS -->
+    <script src="/static/js/theme.js"></script>
+
+    <!-- Login Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('loginForm');
+            const alertBox = document.getElementById('authAlert');
+            const alertMessage = document.getElementById('alertMessage');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnSpinner = document.getElementById('btnSpinner');
+            const btnText = document.getElementById('btnText');
+            const passwordInput = document.getElementById('password');
+            const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+
+            // Password visibility toggle
+            togglePasswordBtn.addEventListener('click', () => {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                togglePasswordBtn.textContent = type === 'password' ? '👁️' : '🙈';
+            });
+
+            function showAlert(msg, isError = true) {
+                alertBox.className = isError ? 'auth-alert error' : 'auth-alert success';
+                alertMessage.textContent = msg;
+                alertBox.style.display = 'flex';
+            }
+
+            function hideAlert() {
+                alertBox.style.display = 'none';
+            }
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
+
+                const email = document.getElementById('email').value.trim();
+                const password = passwordInput.value;
+
+                if (!email || !password) {
+                    showAlert('Please fill in both email and password.');
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                btnSpinner.style.display = 'inline-block';
+                btnText.textContent = 'Authenticating...';
+
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ email, password }),
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        showAlert(data.detail || 'Invalid email or password.');
+                        submitBtn.disabled = false;
+                        btnSpinner.style.display = 'none';
+                        btnText.textContent = 'Sign In to Dashboard';
+                        return;
+                    }
+
+                    showAlert('Login successful! Redirecting to dashboard...', false);
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url || '/dashboard';
+                    }, 500);
+
+                } catch (err) {
+                    showAlert('Network error. Please verify the server is running and try again.');
+                    submitBtn.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    btnText.textContent = 'Sign In to Dashboard';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

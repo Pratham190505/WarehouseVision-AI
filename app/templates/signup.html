@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="WarehouseVision AI - Register an account for AI-powered warehouse analytics.">
+    <title>Create Account — WarehouseVision AI</title>
+
+    <!-- Google Fonts & Stylesheets -->
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <link rel="stylesheet" href="/static/css/auth.css">
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-bg-grid"></div>
+
+        <!-- Theme Toggle -->
+        <button class="auth-theme-toggle" id="themeToggleBtn" title="Toggle Light/Dark Theme">🌙</button>
+
+        <div class="auth-card" style="max-width: 480px;">
+            <div class="auth-brand">
+                <div class="auth-logo-badge">W</div>
+                <h1>Create Account</h1>
+                <p>Start monitoring warehouse safety and inventory with AI</p>
+            </div>
+
+            <div class="auth-alert" id="authAlert" role="alert">
+                <span id="alertIcon">⚠️</span>
+                <span id="alertMessage"></span>
+            </div>
+
+            <form id="signupForm" autocomplete="on">
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input 
+                            type="text" 
+                            id="name" 
+                            name="name" 
+                            class="form-control" 
+                            placeholder="e.g. Pratham" 
+                            required 
+                            minlength="2"
+                            autofocus
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Work Email</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">✉️</span>
+                        <input 
+                            type="email" 
+                            id="email" 
+                            name="email" 
+                            class="form-control" 
+                            placeholder="name@company.com" 
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            class="form-control" 
+                            placeholder="At least 6 characters" 
+                            required 
+                            minlength="6"
+                        >
+                        <button type="button" class="toggle-password-btn" id="togglePasswordBtn" title="Show/Hide Password">👁️</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input 
+                            type="password" 
+                            id="confirmPassword" 
+                            name="confirm_password" 
+                            class="form-control" 
+                            placeholder="Re-enter your password" 
+                            required 
+                            minlength="6"
+                        >
+                        <button type="button" class="toggle-password-btn" id="toggleConfirmPasswordBtn" title="Show/Hide Password">👁️</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-auth-submit" id="submitBtn">
+                    <span class="auth-spinner" id="btnSpinner"></span>
+                    <span id="btnText">Create Account</span>
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                Already have an account? <a href="/login">Sign in</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme JS -->
+    <script src="/static/js/theme.js"></script>
+
+    <!-- Signup Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('signupForm');
+            const alertBox = document.getElementById('authAlert');
+            const alertMessage = document.getElementById('alertMessage');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnSpinner = document.getElementById('btnSpinner');
+            const btnText = document.getElementById('btnText');
+            
+            const passwordInput = document.getElementById('password');
+            const confirmInput = document.getElementById('confirmPassword');
+            const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+            const toggleConfirmPasswordBtn = document.getElementById('toggleConfirmPasswordBtn');
+
+            function toggleVisibility(input, btn) {
+                const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                input.setAttribute('type', type);
+                btn.textContent = type === 'password' ? '👁️' : '🙈';
+            }
+
+            togglePasswordBtn.addEventListener('click', () => toggleVisibility(passwordInput, togglePasswordBtn));
+            toggleConfirmPasswordBtn.addEventListener('click', () => toggleVisibility(confirmInput, toggleConfirmPasswordBtn));
+
+            function showAlert(msg, isError = true) {
+                alertBox.className = isError ? 'auth-alert error' : 'auth-alert success';
+                alertMessage.textContent = msg;
+                alertBox.style.display = 'flex';
+            }
+
+            function hideAlert() {
+                alertBox.style.display = 'none';
+            }
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                hideAlert();
+
+                const name = document.getElementById('name').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const password = passwordInput.value;
+                const confirmPassword = confirmInput.value;
+
+                if (!name || name.length < 2) {
+                    showAlert('Full name must be at least 2 characters long.');
+                    return;
+                }
+
+                if (!email) {
+                    showAlert('Please provide an email address.');
+                    return;
+                }
+
+                if (!password || password.length < 6) {
+                    showAlert('Password must be at least 6 characters long.');
+                    return;
+                }
+
+                if (password !== confirmPassword) {
+                    showAlert('Passwords do not match. Please verify and retype.');
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                btnSpinner.style.display = 'inline-block';
+                btnText.textContent = 'Creating Account...';
+
+                try {
+                    const response = await fetch('/api/auth/signup', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            name,
+                            email,
+                            password,
+                            confirm_password: confirmPassword,
+                        }),
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        showAlert(data.detail || 'Registration failed. Please check the details.');
+                        submitBtn.disabled = false;
+                        btnSpinner.style.display = 'none';
+                        btnText.textContent = 'Create Account';
+                        return;
+                    }
+
+                    showAlert('Account created successfully! Redirecting to dashboard...', false);
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url || '/dashboard';
+                    }, 500);
+
+                } catch (err) {
+                    showAlert('Network error. Please verify the server is running and try again.');
+                    submitBtn.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    btnText.textContent = 'Create Account';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
