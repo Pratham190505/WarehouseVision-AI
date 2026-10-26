@@ -127,12 +127,13 @@ class VideoService:
                             annotated, zone_result["violations"]
                         )
 
-                    # Check Machine Proximity Safety Zones
+                    # Check Machine Proximity & Restricted Zone Safety
                     safety_eval = self.safety_evaluator.evaluate_detections(
                         detections=frame_detections,
                         frame_idx=frame_idx,
                         is_video=True,
                         image_shape=(height, width),
+                        zones=self.zone_detector.zones,
                     )
                     frame_alerts = safety_eval.get("alerts", [])
                     if frame_alerts:
@@ -241,17 +242,21 @@ class VideoService:
             all_incidents = []
             for inc in list(self.safety_evaluator.active_incidents.values()) + self.safety_evaluator.resolved_incidents:
                 if inc.consecutive_frames >= self.safety_evaluator.config.persistence_frames:
+                    m_track = inc.machine_id.split("#")[-1] if (inc.machine_id and "#" in inc.machine_id) else inc.machine_id
                     all_incidents.append({
                         "incident_id": inc.incident_id,
+                        "event_type": inc.event_type,
+                        "zone_name": inc.zone_name,
                         "worker_id": inc.worker_id,
                         "worker_track_id": inc.worker_id.replace("Worker #", ""),
                         "machine_id": inc.machine_id,
-                        "machine_track_id": inc.machine_id.split("#")[-1] if "#" in inc.machine_id else inc.machine_id,
+                        "machine_track_id": m_track,
                         "machine_type": inc.machine_type,
                         "severity": inc.severity,
                         "status": "ACTIVE" if inc.is_active else "RESOLVED",
                         "first_detected_at": inc.first_detected_at.isoformat(),
                         "last_detected_at": inc.last_detected_at.isoformat(),
+                        "resolved_at": inc.resolved_at.isoformat() if inc.resolved_at else None,
                         "first_frame": inc.first_frame,
                         "last_frame": inc.last_frame,
                         "consecutive_frames": inc.consecutive_frames,

@@ -23,7 +23,7 @@ from app.routes.safety import router as safety_router
 from app.services.auth_service import get_current_user_optional
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Ensure directories exist
 BASE_DIR = Path(__file__).resolve().parent.parent

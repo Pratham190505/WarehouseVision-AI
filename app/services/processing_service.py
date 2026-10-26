@@ -352,24 +352,11 @@ class ProcessingService:
                 agg_result = list(collection.aggregate(pipeline))
                 stats = agg_result[0] if agg_result else {}
 
-                # Safety events stats in MongoDB
-                safety_coll = get_collection("safety_events")
-                active_safety_alerts = 0
-                total_safety_events = 0
-                resolved_safety_events = 0
-                if safety_coll is not None:
-                    sq = {"user_id": user_id} if user_id else {}
-                    total_safety_events = safety_coll.count_documents(sq)
-                    active_safety_alerts = safety_coll.count_documents({**sq, "status": "ACTIVE"})
-                    resolved_safety_events = safety_coll.count_documents({**sq, "status": "RESOLVED"})
-                else:
-                    user_safety = [
-                        e for e in self._in_memory_safety_events.values()
-                        if not user_id or e.get("user_id") == user_id
-                    ]
-                    total_safety_events = len(user_safety)
-                    active_safety_alerts = len([e for e in user_safety if e.get("status") == "ACTIVE"])
-                    resolved_safety_events = len([e for e in user_safety if e.get("status") == "RESOLVED"])
+                # Safety events stats derived from actual persisted safety events
+                safety_summary = self.get_safety_summary(user_id=user_id)
+                active_safety_alerts = safety_summary["active"]
+                total_safety_events = safety_summary["total"]
+                resolved_safety_events = safety_summary["resolved"]
 
                 return {
                     "total_analyses": total,
@@ -404,13 +391,7 @@ class ProcessingService:
         avg_occupancy = round(sum(a.get("analytics", {}).get("occupancy", 0) for a in completed) / len(completed), 1) if completed else 0
         avg_util = round(sum(a.get("analytics", {}).get("space_utilization", 0) for a in completed) / len(completed), 1) if completed else 0
 
-        user_safety = [
-            e for e in self._in_memory_safety_events.values()
-            if not user_id or e.get("user_id") == user_id
-        ]
-        total_safety_events = len(user_safety)
-        active_safety_alerts = len([e for e in user_safety if e.get("status") == "ACTIVE"])
-        resolved_safety_events = len([e for e in user_safety if e.get("status") == "RESOLVED"])
+        safety_summary = self.get_safety_summary(user_id=user_id)
 
         return {
             "total_analyses": len(user_analyses),
@@ -422,9 +403,44 @@ class ProcessingService:
             "avg_occupancy": avg_occupancy,
             "avg_space_utilization": avg_util,
             "total_violations": total_violations,
-            "active_safety_alerts": active_safety_alerts,
-            "total_safety_events": total_safety_events,
-            "resolved_safety_events": resolved_safety_events,
+            "active_safety_alerts": safety_summary["active"],
+            "total_safety_events": safety_summary["total"],
+            "resolved_safety_events": safety_summary["resolved"],
+        }
+
+    def get_safety_summary(self, user_id: Optional[str] = None) -> Dict[str, int]:
+        """
+        Derive safety KPI counts from actual persisted safety events for the authenticated user.
+        - active: Count of incidents with status 'ACTIVE'
+        - total: Count of all persisted safety incidents for the user
+        - resolved: Count of incidents with status 'RESOLVED'
+        """
+        collection = get_collection("safety_events")
+        if collection is not None:
+            try:
+                sq: Dict[str, Any] = {}
+                if user_id:
+                    sq["user_id"] = user_id
+                total = collection.count_documents(sq)
+                active = collection.count_documents({**sq, "status": "ACTIVE"})
+                resolved = collection.count_documents({**sq, "status": "RESOLVED"})
+                return {
+                    "active": active,
+                    "total": total,
+                    "resolved": resolved,
+                }
+            except Exception as e:
+                logger.error(f"Failed to fetch safety summary from MongoDB: {e}")
+
+        # In-memory fallback
+        user_events = [
+            e for e in self._in_memory_safety_events.values()
+            if not user_id or e.get("user_id") == user_id
+        ]
+        return {
+            "active": len([e for e in user_events if e.get("status") == "ACTIVE"]),
+            "total": len(user_events),
+            "resolved": len([e for e in user_events if e.get("status") == "RESOLVED"]),
         }
 
     def _persist_safety_events(
@@ -436,22 +452,35 @@ class ProcessingService:
         """
         Persist safety events into MongoDB 'safety_events' collection and in-memory store.
         Avoids creating duplicate events for the same incident; updates existing active incidents.
+        Handles both restricted zone violations and machine proximity incidents.
         """
         now = datetime.utcnow()
         collection = get_collection("safety_events")
 
         for inc in incidents:
             event_id = inc.get("event_id") or inc.get("incident_id")
-            wid = str(inc.get("worker_track_id") or inc.get("worker_id") or "worker").replace("Worker #", "")
-            mid = str(inc.get("machine_track_id") or inc.get("machine_id") or "machine")
-            if "#" in mid:
-                mid = mid.split("#")[-1]
+            event_type = inc.get("event_type") or ("restricted_zone_violation" if inc.get("zone_name") else "machine_proximity")
+            zone_name = inc.get("zone_name")
+
+            raw_wid = inc.get("worker_track_id") or inc.get("worker_id") or "worker"
+            wid = str(raw_wid).replace("Worker #", "").strip()
+
+            raw_mid = inc.get("machine_track_id") or inc.get("machine_id")
+            mid = None
+            if raw_mid is not None:
+                mid = str(raw_mid)
+                if "#" in mid:
+                    mid = mid.split("#")[-1].strip()
 
             if not event_id:
-                event_id = f"{analysis_id}_{wid}_{mid}"
+                if event_type == "restricted_zone_violation" and zone_name:
+                    clean_zone = zone_name.lower().replace(" ", "_")
+                    event_id = f"{analysis_id}_{wid}_{clean_zone}"
+                else:
+                    event_id = f"{analysis_id}_{wid}_{mid or 'machine'}"
 
-            machine_type = inc.get("machine_type", "forklift")
-            proximity_method = inc.get("proximity_method", "image_space_proximity")
+            machine_type = inc.get("machine_type") or ("forklift" if event_type == "machine_proximity" else None)
+            proximity_method = inc.get("proximity_method", "image_space")
             dist_m = inc.get("estimated_distance_m")
             thresh_m = inc.get("configured_threshold_m")
             severity = inc.get("severity", "HIGH")
@@ -475,10 +504,21 @@ class ProcessingService:
             elif not isinstance(last_detected, datetime):
                 last_detected = now
 
+            resolved_at = inc.get("resolved_at")
+            if isinstance(resolved_at, str):
+                try:
+                    resolved_at = datetime.fromisoformat(resolved_at.replace("Z", "+00:00"))
+                except Exception:
+                    resolved_at = now
+            elif not isinstance(resolved_at, datetime) and status == "RESOLVED":
+                resolved_at = now
+
             event_doc = {
                 "event_id": event_id,
                 "user_id": user_id,
                 "analysis_id": analysis_id,
+                "event_type": event_type,
+                "zone_name": zone_name,
                 "worker_track_id": wid,
                 "machine_track_id": mid,
                 "machine_type": machine_type,
@@ -490,6 +530,7 @@ class ProcessingService:
                 "is_acknowledged": inc.get("is_acknowledged", False),
                 "acknowledged_at": inc.get("acknowledged_at"),
                 "acknowledged_by": inc.get("acknowledged_by"),
+                "resolved_at": resolved_at,
                 "first_detected_at": first_detected,
                 "last_detected_at": last_detected,
                 "created_at": now,
@@ -500,28 +541,38 @@ class ProcessingService:
                 existing = self._in_memory_safety_events[event_id]
                 existing["last_detected_at"] = last_detected
                 existing["status"] = status
+                if user_id:
+                    existing["user_id"] = user_id
                 if dist_m is not None:
                     existing["estimated_distance_m"] = dist_m
+                if resolved_at:
+                    existing["resolved_at"] = resolved_at
             else:
                 self._in_memory_safety_events[event_id] = event_doc.copy()
 
             # Update or insert in MongoDB
             if collection is not None:
                 try:
+                    set_dict: Dict[str, Any] = {
+                        "user_id": user_id,
+                        "last_detected_at": last_detected,
+                        "status": status,
+                        "estimated_distance_m": dist_m,
+                        "configured_threshold_m": thresh_m,
+                        "severity": severity,
+                    }
+                    if resolved_at:
+                        set_dict["resolved_at"] = resolved_at
+
                     collection.update_one(
                         {"event_id": event_id},
                         {
-                            "$set": {
-                                "last_detected_at": last_detected,
-                                "status": status,
-                                "estimated_distance_m": dist_m,
-                                "configured_threshold_m": thresh_m,
-                                "severity": severity,
-                            },
+                            "$set": set_dict,
                             "$setOnInsert": {
                                 "event_id": event_id,
-                                "user_id": user_id,
                                 "analysis_id": analysis_id,
+                                "event_type": event_type,
+                                "zone_name": zone_name,
                                 "worker_track_id": wid,
                                 "machine_track_id": mid,
                                 "machine_type": machine_type,

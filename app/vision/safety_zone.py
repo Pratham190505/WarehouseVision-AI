@@ -25,7 +25,7 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 import cv2
 import numpy as np
 
-from app.vision.safety_config import SafetyConfig, get_safety_config
+from app.vision.safety_config import SafetyConfig, get_safety_config, normalize_class
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def _utc_now() -> datetime:
 
 class SafetyIncident:
     """
-    Tracks a single machine-worker proximity incident across time/frames.
+    Tracks a single machine-worker proximity or restricted zone incident across time/frames.
     Prevents alert flapping and multiple DB events for continuous events.
     """
 
@@ -45,11 +45,13 @@ class SafetyIncident:
         self,
         incident_id: str,
         worker_id: str,
-        machine_id: str,
-        machine_type: str,
-        configured_threshold_m: float,
-        proximity_method: str,
+        machine_id: Optional[str] = None,
+        machine_type: Optional[str] = None,
+        configured_threshold_m: Optional[float] = None,
+        proximity_method: str = "image_space",
         first_frame: int = 0,
+        event_type: str = "machine_proximity",
+        zone_name: Optional[str] = None,
     ):
         self.incident_id = incident_id
         self.worker_id = worker_id
@@ -57,6 +59,8 @@ class SafetyIncident:
         self.machine_type = machine_type
         self.configured_threshold_m = configured_threshold_m
         self.proximity_method = proximity_method
+        self.event_type = event_type
+        self.zone_name = zone_name
 
         self.first_detected_at: datetime = _utc_now()
         self.last_detected_at: datetime = _utc_now()
@@ -190,16 +194,7 @@ class SafetyZoneEvaluator:
             desc = f"{calibrated_distance_m:.1f}m (Threshold: {threshold_m:.1f}m)"
             return in_zone, desc
 
-        # 2. Configurable polygon check if user defined specific danger zone polygons
-        if self.config.danger_zone_polygons:
-            for pzone in self.config.danger_zone_polygons:
-                poly = np.array(pzone.get("polygon", []), dtype=np.int32)
-                if len(poly) >= 3:
-                    if cv2.pointPolygonTest(poly, (float(point[0]), float(point[1])), False) >= 0:
-                        zone_name = pzone.get("name", "Restricted Area")
-                        return True, f"Inside configured polygon zone: {zone_name}"
-
-        # 3. Uncalibrated image-space elliptical proximity zone around machine base
+        # 2. Uncalibrated image-space elliptical proximity zone around machine base
         zone = self.get_machine_danger_zone(machine_bbox)
         cx, cy = zone["center"]
         rx, ry = zone["axes"]
@@ -223,24 +218,27 @@ class SafetyZoneEvaluator:
         frame_idx: int = 0,
         is_video: bool = False,
         image_shape: Optional[Tuple[int, int]] = None,
+        zones: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Evaluate all workers against all machines in a single frame/image.
+        Evaluate all workers against restricted warehouse polygon zones
+        AND hazardous machine proximity perimeters.
 
         Args:
             detections: List of detection dicts with 'bbox', 'class', and optional 'track_id'.
             frame_idx: Current frame index (for videos).
             is_video: Whether this is part of continuous video analysis.
             image_shape: (height, width) of the image.
+            zones: Optional list of restricted zones (e.g. from ZoneDetector).
 
         Returns:
             Dict containing:
             - alerts: List of active danger alerts for this frame
             - active_incidents: List of currently active SafetyIncident objects
             - resolved_incidents: Incidents resolved in this frame
-            - pairs_evaluated: Total worker-machine pairs inspected
+            - pairs_evaluated: Total pairs inspected
+            - has_hazard: Boolean indicating whether any hazard is active
         """
-        # Separate workers and hazardous machines
         workers = []
         machines = []
 
@@ -251,39 +249,156 @@ class SafetyZoneEvaluator:
             if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
                 continue
 
-            cls_name = det.get("class", "").lower()
+            raw_cls = str(det.get("class", "")).lower()
+            norm_cls = normalize_class(raw_cls)
             track_id = det.get("track_id")
+            pos = self.get_ground_contact_point(bbox)
+            center = det.get("center") or [(bbox[0] + bbox[2]) // 2, (bbox[1] + bbox[3]) // 2]
 
-            # Determine human-readable identifier
-            if self.config.is_worker(cls_name):
+            # Determine human-readable identifier & classify
+            if self.config.is_worker(norm_cls) or self.config.is_worker(raw_cls):
                 wid = f"Worker #{track_id}" if track_id is not None else f"Worker #{i + 1}"
-                workers.append({"det": det, "id": wid, "raw_id": track_id or str(i + 1)})
-            elif self.config.is_machine(cls_name):
-                mid = f"{cls_name.capitalize()} #{track_id}" if track_id is not None else f"{cls_name.capitalize()} #{i + 1}"
-                machines.append({"det": det, "id": mid, "raw_id": track_id or str(i + 1), "type": cls_name})
+                workers.append({
+                    "det": det,
+                    "id": wid,
+                    "raw_id": str(track_id) if track_id is not None else str(i + 1),
+                    "pos": pos,
+                    "center": center,
+                    "bbox": bbox,
+                    "class": norm_cls,
+                })
+            elif self.config.is_machine(norm_cls) or self.config.is_machine(raw_cls):
+                m_label = norm_cls.capitalize() if norm_cls != "unknown" else "Machine"
+                mid = f"{m_label} #{track_id}" if track_id is not None else f"{m_label} #{i + 1}"
+                machines.append({
+                    "det": det,
+                    "id": mid,
+                    "raw_id": str(track_id) if track_id is not None else str(i + 1),
+                    "type": norm_cls,
+                    "pos": pos,
+                    "center": center,
+                    "bbox": bbox,
+                    "class": norm_cls,
+                })
 
         current_breach_pairs: Set[Tuple[str, str]] = set()
-        alerts = []
+        alerts: List[Dict[str, Any]] = []
         pairs_evaluated = 0
         now = _utc_now()
 
+        # =====================================================================
+        # 1. EVALUATE CONFIGURED RESTRICTED POLYGON ZONES (e.g. Loading Bay)
+        # =====================================================================
+        candidate_zones: List[Any] = []
+        if zones:
+            candidate_zones.extend(zones)
+        if self.config.danger_zone_polygons:
+            candidate_zones.extend(self.config.danger_zone_polygons)
+
+        for zone_item in candidate_zones:
+            if hasattr(zone_item, "polygon"):
+                poly = zone_item.polygon
+                zone_name = getattr(zone_item, "name", "Restricted Area")
+            elif isinstance(zone_item, dict):
+                poly = np.array(zone_item.get("polygon", []), dtype=np.int32)
+                zone_name = zone_item.get("name", "Restricted Area")
+            else:
+                continue
+
+            if len(poly) < 3:
+                continue
+
+            # Identify any machine operating inside or intersecting this zone
+            associated_machine = None
+            for m in machines:
+                m_pt = (float(m["pos"][0]), float(m["pos"][1]))
+                m_cnt = (float(m["center"][0]), float(m["center"][1]))
+                if cv2.pointPolygonTest(poly, m_pt, False) >= 0 or cv2.pointPolygonTest(poly, m_cnt, False) >= 0:
+                    associated_machine = m
+                    break
+
+            for w in workers:
+                w_pt = (float(w["pos"][0]), float(w["pos"][1]))
+                w_cnt = (float(w["center"][0]), float(w["center"][1]))
+
+                # Check if worker's ground contact or center point is inside restricted polygon
+                in_zone = (cv2.pointPolygonTest(poly, w_pt, False) >= 0 or
+                           cv2.pointPolygonTest(poly, w_cnt, False) >= 0)
+
+                if in_zone:
+                    pair_key = (w["id"], f"zone_{zone_name}")
+                    current_breach_pairs.add(pair_key)
+
+                    m_id_val = associated_machine["id"] if associated_machine else (machines[0]["id"] if machines else None)
+                    m_track_val = associated_machine["raw_id"] if associated_machine else (machines[0]["raw_id"] if machines else None)
+                    m_type_val = associated_machine["type"] if associated_machine else (machines[0]["type"] if machines else "forklift")
+
+                    alert_data = {
+                        "violation_detected": True,
+                        "event_type": "restricted_zone_violation",
+                        "worker_id": w["id"],
+                        "worker_track_id": w["raw_id"],
+                        "machine_id": m_id_val,
+                        "machine_track_id": m_track_val,
+                        "machine_type": m_type_val,
+                        "zone_name": zone_name,
+                        "severity": "HIGH",
+                        "in_danger_zone": True,
+                        "estimated_distance_m": None,  # NEVER fabricate metric distance without calibration
+                        "configured_threshold_m": None,
+                        "proximity_label": f"Worker inside restricted area: {zone_name}",
+                        "proximity_method": "image_space",
+                        "worker_bbox": w["bbox"],
+                        "machine_bbox": associated_machine["bbox"] if associated_machine else (machines[0]["bbox"] if machines else None),
+                        "worker_pos": w["pos"],
+                        "machine_pos": associated_machine["pos"] if associated_machine else (machines[0]["pos"] if machines else None),
+                        "timestamp": now.isoformat(),
+                        "status": "ACTIVE",
+                    }
+                    alerts.append(alert_data)
+
+                    # Stateful video tracking
+                    if is_video:
+                        incident = self.active_incidents.get(pair_key)
+                        if incident is None:
+                            last_resolved_time = self.cooldown_tracker.get(pair_key, 0)
+                            if (time.time() - last_resolved_time) >= self.config.cooldown_seconds:
+                                incident = SafetyIncident(
+                                    incident_id=f"{w['raw_id']}_{zone_name.lower().replace(' ', '_')}_{frame_idx}",
+                                    worker_id=w["id"],
+                                    machine_id=m_id_val,
+                                    machine_type=m_type_val,
+                                    configured_threshold_m=None,
+                                    proximity_method="image_space",
+                                    first_frame=frame_idx,
+                                    event_type="restricted_zone_violation",
+                                    zone_name=zone_name,
+                                )
+                                self.active_incidents[pair_key] = incident
+                        if incident:
+                            incident.last_frame = frame_idx
+                            incident.last_detected_at = now
+                            incident.consecutive_frames += 1
+                            incident.last_proximity_label = f"Worker inside restricted area: {zone_name}"
+                            incident.severity = "HIGH"
+                            if incident.consecutive_frames >= self.config.persistence_frames:
+                                incident.is_active = True
+
+        # =====================================================================
+        # 2. EVALUATE MACHINE-WORKER PROXIMITY PAIRS
+        # =====================================================================
         for w in workers:
-            w_bbox = w["det"]["bbox"]
-            w_pos = self.get_ground_contact_point(w_bbox)
+            w_pos = w["pos"]
             w_id = w["id"]
 
             for m in machines:
                 pairs_evaluated += 1
-                m_bbox = m["det"]["bbox"]
-                m_pos = self.get_ground_contact_point(m_bbox)
+                m_pos = m["pos"]
                 m_id = m["id"]
                 m_type = m["type"]
                 pair_key = (w_id, m_id)
 
-                # Get configured threshold for this machine
                 threshold_m = self.config.get_threshold_m(m_type, str(m["raw_id"]))
-
-                # Estimate distance if calibrated
                 dist_m = self.calculate_distance_meters(w_pos, m_pos)
                 proximity_method = (
                     "camera_calibration_ground_plane"
@@ -293,7 +408,7 @@ class SafetyZoneEvaluator:
 
                 in_danger_zone, prox_label = self.is_point_in_machine_zone(
                     point=w_pos,
-                    machine_bbox=m_bbox,
+                    machine_bbox=m["bbox"],
                     calibrated_distance_m=dist_m,
                     threshold_m=threshold_m,
                 )
@@ -301,29 +416,28 @@ class SafetyZoneEvaluator:
                 if in_danger_zone:
                     current_breach_pairs.add(pair_key)
 
-                    # Determine severity based on distance or deep penetration
                     if dist_m is not None:
-                        if dist_m <= (threshold_m * 0.5):
-                            severity = "CRITICAL"
-                        else:
-                            severity = "HIGH"
+                        severity = "CRITICAL" if dist_m <= (threshold_m * 0.5) else "HIGH"
                     else:
                         severity = "HIGH"
 
                     alert_data = {
+                        "violation_detected": True,
+                        "event_type": "machine_proximity",
                         "worker_id": w_id,
                         "worker_track_id": w["raw_id"],
                         "machine_id": m_id,
                         "machine_track_id": m["raw_id"],
                         "machine_type": m_type,
+                        "zone_name": None,
                         "severity": severity,
                         "in_danger_zone": True,
                         "estimated_distance_m": dist_m,
                         "configured_threshold_m": threshold_m if dist_m is not None else None,
                         "proximity_label": prox_label,
                         "proximity_method": proximity_method,
-                        "worker_bbox": w_bbox,
-                        "machine_bbox": m_bbox,
+                        "worker_bbox": w["bbox"],
+                        "machine_bbox": m["bbox"],
                         "worker_pos": w_pos,
                         "machine_pos": m_pos,
                         "timestamp": now.isoformat(),
@@ -331,11 +445,10 @@ class SafetyZoneEvaluator:
                     }
                     alerts.append(alert_data)
 
-                    # Stateful video tracking & anti-flapping logic
+                    # Stateful video tracking
                     if is_video:
                         incident = self.active_incidents.get(pair_key)
                         if incident is None:
-                            # Check cooldown before opening a new incident
                             last_resolved_time = self.cooldown_tracker.get(pair_key, 0)
                             if (time.time() - last_resolved_time) >= self.config.cooldown_seconds:
                                 incident = SafetyIncident(
@@ -346,6 +459,8 @@ class SafetyZoneEvaluator:
                                     configured_threshold_m=threshold_m,
                                     proximity_method=proximity_method,
                                     first_frame=frame_idx,
+                                    event_type="machine_proximity",
+                                    zone_name=None,
                                 )
                                 self.active_incidents[pair_key] = incident
                         if incident:
@@ -358,7 +473,6 @@ class SafetyZoneEvaluator:
                             if dist_m is not None:
                                 if incident.min_estimated_distance_m is None or dist_m < incident.min_estimated_distance_m:
                                     incident.min_estimated_distance_m = dist_m
-                            # Activate once persistence frames threshold is satisfied
                             if incident.consecutive_frames >= self.config.persistence_frames:
                                 incident.is_active = True
 
@@ -367,7 +481,6 @@ class SafetyZoneEvaluator:
         if is_video:
             for pair_key, incident in list(self.active_incidents.items()):
                 if pair_key not in current_breach_pairs:
-                    # Worker left the danger zone -> Resolve incident
                     incident.is_active = False
                     incident.is_resolved = True
                     incident.resolved_at = now
@@ -393,20 +506,19 @@ class SafetyZoneEvaluator:
         """
         Draw visual safety indicators on the media:
         - Highlights machine safety zone with warning outline and danger shading.
-        - Highlights workers inside the danger zone in bold RED with warning banner.
+        - Highlights workers inside restricted zones or machine danger zones in bold RED with warning banner.
         - Draws a danger connection line between machine and worker.
-        - Shows machine ID and safety alert status.
+        - Shows machine/zone ID and safety alert status.
         - Avoids displaying unsupported numeric distances.
         """
         annotated = frame.copy()
         h, w = frame.shape[:2]
 
+        if not alerts:
+            return annotated
+
         # Draw machine safety zones first (as semi-transparent overlay)
         overlay = annotated.copy()
-
-        # Track which machines and workers are in breach to style appropriately
-        breached_machines = {a["machine_id"] for a in alerts}
-        breached_workers = {a["worker_id"] for a in alerts}
 
         for alert in alerts:
             m_bbox = alert.get("machine_bbox")
@@ -417,13 +529,11 @@ class SafetyZoneEvaluator:
                 zone = self.get_machine_danger_zone(m_bbox)
                 cx, cy = zone["center"]
                 rx, ry = zone["axes"]
-
-                # Fill danger ellipse on overlay (Red/Amber)
                 cv2.ellipse(overlay, (cx, cy), (rx, ry), 0, 0, 360, (0, 0, 220), -1)
 
             # Draw connection line between worker base and machine base
             if w_pos and m_pos:
-                cv2.line(annotated, w_pos, m_pos, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.line(annotated, tuple(w_pos), tuple(m_pos), (0, 0, 255), 2, cv2.LINE_AA)
 
         # Blend danger zone overlay
         alpha = 0.22
@@ -438,13 +548,15 @@ class SafetyZoneEvaluator:
                 rx, ry = zone["axes"]
                 cv2.ellipse(annotated, (cx, cy), (rx, ry), 0, 0, 360, (0, 0, 255), 2, cv2.LINE_AA)
 
-        # Highlight workers inside danger zone in bold RED
+        # Highlight workers inside danger / restricted zone in bold RED
         for alert in alerts:
             w_bbox = alert.get("worker_bbox")
             m_bbox = alert.get("machine_bbox")
             w_id = alert.get("worker_id", "Worker")
             m_id = alert.get("machine_id", "Machine")
             dist_m = alert.get("estimated_distance_m")
+            event_type = alert.get("event_type", "machine_proximity")
+            zone_name = alert.get("zone_name")
 
             if w_bbox:
                 wx1, wy1, wx2, wy2 = w_bbox
@@ -452,33 +564,34 @@ class SafetyZoneEvaluator:
                 cv2.rectangle(annotated, (wx1, wy1), (wx2, wy2), (0, 0, 255), 3)
 
                 # Worker danger label
-                w_label = f"DANGER! {w_id}"
-                if dist_m is not None:
-                    w_label += f" ({dist_m:.1f}m)"
+                if event_type == "restricted_zone_violation":
+                    w_label = f"RESTRICTED ZONE: {zone_name or 'VIOLATION'}"
+                else:
+                    w_label = f"DANGER! {w_id}"
+                    if dist_m is not None:
+                        w_label += f" ({dist_m:.1f}m)"
 
                 (tw, th), _ = cv2.getTextSize(w_label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
                 cv2.rectangle(annotated, (wx1, wy1 - th - 10), (wx1 + tw + 6, wy1), (0, 0, 220), -1)
                 cv2.putText(annotated, w_label, (wx1 + 3, wy1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
-            if m_bbox:
+            if m_bbox and event_type == "machine_proximity":
                 mx1, my1, mx2, my2 = m_bbox
-                # Machine hazard label
                 m_label = f"⚠️ {m_id} [PROXIMITY ALERT]"
                 (mtw, mth), _ = cv2.getTextSize(m_label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
                 cv2.rectangle(annotated, (mx1, my1 - mth - 10), (mx1 + mtw + 6, my1), (0, 0, 200), -1)
                 cv2.putText(annotated, m_label, (mx1 + 3, my1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
-        # If there are active alerts, add a prominent red safety banner at top of frame
-        if alerts:
-            banner_h = 36
-            banner_overlay = annotated.copy()
-            cv2.rectangle(banner_overlay, (0, 0), (w, banner_h), (0, 0, 180), -1)
-            cv2.addWeighted(banner_overlay, 0.85, annotated, 0.15, 0, annotated)
+        # Prominent red safety banner at top of frame
+        banner_h = 36
+        banner_overlay = annotated.copy()
+        cv2.rectangle(banner_overlay, (0, 0), (w, banner_h), (0, 0, 180), -1)
+        cv2.addWeighted(banner_overlay, 0.85, annotated, 0.15, 0, annotated)
 
-            banner_text = f"CRITICAL: {len(alerts)} MACHINE PROXIMITY HAZARD{'S' if len(alerts) > 1 else ''} DETECTED"
-            cv2.putText(annotated, banner_text, (20, 24),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+        banner_text = f"CRITICAL: {len(alerts)} SAFETY HAZARD{'S' if len(alerts) > 1 else ''} DETECTED"
+        cv2.putText(annotated, banner_text, (20, 24),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
         return annotated

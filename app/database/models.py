@@ -82,10 +82,12 @@ class SafetyEventRecord(BaseModel):
     event_id: str
     user_id: Optional[str] = None
     analysis_id: str
+    event_type: str = "machine_proximity"  # "machine_proximity" or "restricted_zone_violation"
     worker_track_id: Optional[str] = None
     machine_track_id: Optional[str] = None
-    machine_type: str = "forklift"
-    proximity_method: str = "image_space_proximity"
+    machine_type: Optional[str] = None
+    zone_name: Optional[str] = None
+    proximity_method: str = "image_space"
     estimated_distance_m: Optional[float] = None
     configured_threshold_m: Optional[float] = None
     severity: str = "HIGH"  # CRITICAL, HIGH, WARNING
@@ -93,6 +95,7 @@ class SafetyEventRecord(BaseModel):
     is_acknowledged: bool = False
     acknowledged_at: Optional[datetime] = None
     acknowledged_by: Optional[str] = None
+    resolved_at: Optional[datetime] = None
     first_detected_at: datetime = Field(default_factory=datetime.utcnow)
     last_detected_at: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -110,6 +113,8 @@ class SafetyEventRecord(BaseModel):
         data["created_at"] = self.created_at
         if self.acknowledged_at:
             data["acknowledged_at"] = self.acknowledged_at
+        if self.resolved_at:
+            data["resolved_at"] = self.resolved_at
         return data
 
     @classmethod

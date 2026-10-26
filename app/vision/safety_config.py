@@ -16,16 +16,59 @@ logger = logging.getLogger(__name__)
 # Default machine proximity threshold in metres (prototype setting, not certified)
 DEFAULT_PROXIMITY_THRESHOLD_M = 2.0
 
+# Central class normalization mapping
+CLASS_NORMALIZATION_MAP: Dict[str, str] = {
+    # Workers
+    "worker": "worker",
+    "person": "worker",
+    "pedestrian": "worker",
+    "human": "worker",
+    "employee": "worker",
+    # Machines
+    "forklift": "forklift",
+    "truck": "forklift",
+    "car": "forklift",
+    "vehicle": "forklift",
+    "heavy_equipment": "heavy_equipment",
+    "machinery": "machinery",
+    "reach_truck": "forklift",
+    "pallet_jack": "forklift",
+    # Boxes
+    "box": "box",
+    "package": "box",
+    "carton": "box",
+    "backpack": "box",
+    "suitcase": "box",
+    # Pallets
+    "pallet": "pallet",
+    "skid": "pallet",
+    "bench": "pallet",
+    "dining table": "pallet",
+}
+
+
+def normalize_class(class_name: Optional[str]) -> str:
+    """Normalize object class names into standard warehouse categories."""
+    if not class_name:
+        return "unknown"
+    cleaned = str(class_name).strip().lower()
+    return CLASS_NORMALIZATION_MAP.get(cleaned, cleaned)
+
+
 # Supported machine categories that can be treated as hazardous equipment
-DEFAULT_MACHINE_CLASSES = ["forklift", "truck", "heavy_equipment", "machinery"]
+DEFAULT_MACHINE_CLASSES = [
+    "forklift", "truck", "car", "vehicle", "heavy_equipment", "machinery", "reach_truck", "pallet_jack"
+]
 
 # Supported worker categories
-DEFAULT_WORKER_CLASSES = ["worker", "person"]
+DEFAULT_WORKER_CLASSES = ["worker", "person", "pedestrian", "human", "employee"]
 
 # Per-machine type threshold overrides (in metres)
 DEFAULT_MACHINE_TYPE_THRESHOLDS: Dict[str, float] = {
     "forklift": 2.0,
     "truck": 2.5,
+    "car": 2.0,
+    "vehicle": 2.5,
     "heavy_equipment": 3.0,
     "machinery": 2.0,
 }
@@ -90,11 +133,17 @@ class SafetyConfig:
 
     def is_machine(self, class_name: str) -> bool:
         """Check if detected class is a hazardous machine."""
-        return class_name.lower() in [c.lower() for c in self.machine_classes]
+        if not class_name:
+            return False
+        norm = normalize_class(class_name)
+        return norm in [normalize_class(c) for c in self.machine_classes] or class_name.lower() in [c.lower() for c in self.machine_classes]
 
     def is_worker(self, class_name: str) -> bool:
         """Check if detected class is a worker."""
-        return class_name.lower() in [c.lower() for c in self.worker_classes]
+        if not class_name:
+            return False
+        norm = normalize_class(class_name)
+        return norm in [normalize_class(c) for c in self.worker_classes] or class_name.lower() in [c.lower() for c in self.worker_classes]
 
     def to_dict(self) -> Dict[str, Any]:
         """Export config to serializable dictionary."""

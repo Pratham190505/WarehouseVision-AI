@@ -398,3 +398,277 @@ class TestThemeCompatibility:
         ]
         for cls in required_classes:
             assert cls in content, f"CSS class {cls} missing from dashboard.css"
+
+
+class TestSafetyPipelineRequirements:
+    """
+    Automated verification of the end-to-end safety monitoring pipeline
+    covering Requirements Tests A through J.
+    """
+
+    password = "PipelineSafetyTest123!"
+
+    @pytest.fixture(autouse=True)
+    def setup_clients(self):
+        import uuid
+        uid = uuid.uuid4().hex[:8]
+        self.user_a_email = f"req_a_{uid}@example.com"
+        self.user_b_email = f"req_b_{uid}@example.com"
+
+        self.client_a = TestClient(app, follow_redirects=False)
+        self.client_b = TestClient(app, follow_redirects=False)
+
+        # Signup User A
+        res_a = self.client_a.post("/api/auth/signup", json={
+            "name": "Safety Tester Alpha",
+            "email": self.user_a_email,
+            "password": self.password,
+            "confirm_password": self.password,
+        })
+        assert res_a.status_code == 201
+        self.user_a_id = res_a.json()["user"]["id"]
+
+        # Signup User B
+        res_b = self.client_b.post("/api/auth/signup", json={
+            "name": "Safety Tester Beta",
+            "email": self.user_b_email,
+            "password": self.password,
+            "confirm_password": self.password,
+        })
+        assert res_b.status_code == 201
+        self.user_b_id = res_b.json()["user"]["id"]
+
+    def test_a_worker_outside_restricted_polygon(self):
+        """Test A: Worker outside the restricted polygon generates no restricted-zone event."""
+        from app.vision.zone_detection import RestrictedZone
+        zone = RestrictedZone("Loading Bay", [(600, 600), (900, 600), (900, 900), (600, 900)])
+        evaluator = SafetyZoneEvaluator()
+
+        # Worker is in top-left (far from loading bay)
+        detections = [
+            {"class": "worker", "bbox": [50, 50, 90, 150], "track_id": 1},
+        ]
+        res = evaluator.evaluate_detections(detections, frame_idx=0, is_video=False, zones=[zone])
+        assert res["has_hazard"] is False
+        assert len(res["alerts"]) == 0
+
+    def test_b_worker_inside_restricted_polygon(self):
+        """Test B: Worker inside the restricted polygon generates one restricted-zone safety event."""
+        from app.vision.zone_detection import RestrictedZone
+        zone = RestrictedZone("Loading Bay", [(600, 600), (900, 600), (900, 900), (600, 900)])
+        evaluator = SafetyZoneEvaluator()
+
+        # Worker is placed inside Loading Bay
+        detections = [
+            {"class": "worker", "bbox": [700, 700, 750, 800], "track_id": 10},
+        ]
+        res = evaluator.evaluate_detections(detections, frame_idx=0, is_video=False, zones=[zone])
+        assert res["has_hazard"] is True
+        assert len(res["alerts"]) == 1
+
+        alert = res["alerts"][0]
+        assert alert["violation_detected"] is True
+        assert alert["event_type"] == "restricted_zone_violation"
+        assert alert["zone_name"] == "Loading Bay"
+        assert alert["status"] == "ACTIVE"
+        assert alert["in_danger_zone"] is True
+        assert alert["estimated_distance_m"] is None
+
+    def test_c_worker_inside_machine_proximity_zone(self):
+        """Test C: Worker inside configured machine-proximity zone generates a machine-proximity event."""
+        config = SafetyConfig(default_threshold_m=2.0)
+        evaluator = SafetyZoneEvaluator(config=config)
+
+        # Worker at forklift base
+        detections = [
+            {"class": "worker", "bbox": [490, 420, 520, 505], "track_id": 5},
+            {"class": "forklift", "bbox": [400, 350, 600, 500], "track_id": 2},
+        ]
+        res = evaluator.evaluate_detections(detections, frame_idx=0, is_video=False)
+        assert res["has_hazard"] is True
+        assert len(res["alerts"]) == 1
+
+        alert = res["alerts"][0]
+        assert alert["event_type"] == "machine_proximity"
+        assert alert["in_danger_zone"] is True
+        assert alert["machine_type"] == "forklift"
+        assert alert["status"] == "ACTIVE"
+
+    def test_d_repeated_video_frames_continuous_violation(self):
+        """Test D: Repeated video frames with same continuous violation updates one incident without duplicate incidents."""
+        config = SafetyConfig(persistence_frames=1)
+        evaluator = SafetyZoneEvaluator(config=config)
+
+        detections = [
+            {"class": "worker", "bbox": [490, 420, 520, 505], "track_id": 7},
+            {"class": "forklift", "bbox": [400, 350, 600, 500], "track_id": 1},
+        ]
+
+        for f in range(5):
+            res = evaluator.evaluate_detections(detections, frame_idx=f, is_video=True)
+            assert res["has_hazard"] is True
+
+        # Exactly 1 active incident tracked across all 5 frames
+        assert len(evaluator.active_incidents) == 1
+        inc = list(evaluator.active_incidents.values())[0]
+        assert inc.first_frame == 0
+        assert inc.last_frame == 4
+        assert inc.consecutive_frames == 5
+
+    def test_e_violation_clears(self):
+        """Test E: When violation clears, the incident transitions to RESOLVED according to persistence rules."""
+        config = SafetyConfig(persistence_frames=1)
+        evaluator = SafetyZoneEvaluator(config=config)
+
+        breach_dets = [
+            {"class": "worker", "bbox": [490, 420, 520, 505], "track_id": 7},
+            {"class": "forklift", "bbox": [400, 350, 600, 500], "track_id": 1},
+        ]
+        # Frame 0: breach active
+        res0 = evaluator.evaluate_detections(breach_dets, frame_idx=0, is_video=True)
+        assert res0["has_hazard"] is True
+        assert len(evaluator.active_incidents) == 1
+
+        # Frame 1: worker moved far away
+        clear_dets = [
+            {"class": "worker", "bbox": [50, 50, 90, 150], "track_id": 7},
+            {"class": "forklift", "bbox": [400, 350, 600, 500], "track_id": 1},
+        ]
+        res1 = evaluator.evaluate_detections(clear_dets, frame_idx=1, is_video=True)
+        assert res1["has_hazard"] is False
+        assert len(evaluator.active_incidents) == 0
+        assert len(evaluator.resolved_incidents) == 1
+        resolved_inc = evaluator.resolved_incidents[0]
+        assert resolved_inc.is_resolved is True
+        assert resolved_inc.resolved_at is not None
+
+    def test_f_api_summary(self):
+        """Test F: API summary counts match persisted test records for the authenticated user."""
+        service = get_processing_service()
+        aid = f"analysis_summary_test_{self.user_a_id}"
+
+        # Persist 1 ACTIVE incident and 1 RESOLVED incident for User A
+        service._persist_safety_events(
+            analysis_id=aid,
+            user_id=self.user_a_id,
+            incidents=[
+                {
+                    "event_id": f"evt_act_{self.user_a_id}",
+                    "worker_track_id": "1",
+                    "machine_track_id": "1",
+                    "machine_type": "forklift",
+                    "status": "ACTIVE",
+                },
+                {
+                    "event_id": f"evt_res_{self.user_a_id}",
+                    "worker_track_id": "2",
+                    "machine_track_id": "2",
+                    "machine_type": "forklift",
+                    "status": "RESOLVED",
+                    "resolved_at": datetime.utcnow().isoformat(),
+                },
+            ]
+        )
+
+        resp = self.client_a.get("/api/safety/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["active"] >= 1
+        assert data["resolved"] >= 1
+        assert data["total"] >= 2
+        assert data["total"] >= data["active"] + data["resolved"]
+
+    def test_g_dashboard_api_integration(self):
+        """Test G: Dashboard APIs return real events with the structure expected by frontend JS."""
+        service = get_processing_service()
+        aid = f"analysis_dash_test_{self.user_a_id}"
+
+        service._persist_safety_events(
+            analysis_id=aid,
+            user_id=self.user_a_id,
+            incidents=[{
+                "event_id": f"evt_dash_{self.user_a_id}",
+                "event_type": "restricted_zone_violation",
+                "zone_name": "Loading Bay",
+                "worker_track_id": "3",
+                "machine_type": "forklift",
+                "severity": "HIGH",
+                "status": "ACTIVE",
+            }]
+        )
+
+        # GET /api/safety/alerts
+        alerts_resp = self.client_a.get("/api/safety/alerts")
+        assert alerts_resp.status_code == 200
+        alerts_data = alerts_resp.json()
+        assert "alerts" in alerts_data
+        matching = [a for a in alerts_data["alerts"] if a.get("event_id") == f"evt_dash_{self.user_a_id}"]
+        assert len(matching) == 1
+        alert = matching[0]
+        assert alert["event_type"] == "restricted_zone_violation"
+        assert alert["zone_name"] == "Loading Bay"
+        assert alert["status"] == "ACTIVE"
+
+        # GET /api/safety/events
+        events_resp = self.client_a.get("/api/safety/events")
+        assert events_resp.status_code == 200
+        events_data = events_resp.json()
+        assert "events" in events_data
+        ev_matching = [e for e in events_data["events"] if e.get("event_id") == f"evt_dash_{self.user_a_id}"]
+        assert len(ev_matching) == 1
+
+    def test_h_user_isolation(self):
+        """Test H: User B cannot retrieve or acknowledge User A's safety events."""
+        service = get_processing_service()
+        event_id = f"evt_isolated_a_{self.user_a_id}"
+
+        service._persist_safety_events(
+            analysis_id=f"analysis_iso_{self.user_a_id}",
+            user_id=self.user_a_id,
+            incidents=[{
+                "event_id": event_id,
+                "worker_track_id": "99",
+                "machine_type": "forklift",
+                "status": "ACTIVE",
+            }]
+        )
+
+        # User B queries event list -> Should NOT contain User A's event
+        resp_b_list = self.client_b.get("/api/safety/events")
+        assert resp_b_list.status_code == 200
+        b_event_ids = [e["event_id"] for e in resp_b_list.json()["events"]]
+        assert event_id not in b_event_ids
+
+        # User B tries to fetch User A's event directly -> 404
+        resp_b_single = self.client_b.get(f"/api/safety/events/{event_id}")
+        assert resp_b_single.status_code == 404
+
+        # User B tries to acknowledge User A's event -> 404
+        resp_b_ack = self.client_b.post(f"/api/safety/events/{event_id}/acknowledge")
+        assert resp_b_ack.status_code == 404
+
+    def test_i_missing_calibration(self):
+        """Test I: Image-space zone detection works, but does not fabricate a distance in metres."""
+        config = SafetyConfig(camera_calibration={"enabled": False})
+        evaluator = SafetyZoneEvaluator(config=config)
+
+        detections = [
+            {"class": "worker", "bbox": [490, 420, 520, 505], "track_id": 1},
+            {"class": "forklift", "bbox": [400, 350, 600, 500], "track_id": 2},
+        ]
+        res = evaluator.evaluate_detections(detections, frame_idx=0, is_video=False)
+        assert res["has_hazard"] is True
+        assert len(res["alerts"]) == 1
+        assert res["alerts"][0]["estimated_distance_m"] is None
+
+    def test_j_no_detections(self):
+        """Test J: When no objects are detected, no false safety incident is created."""
+        from app.vision.zone_detection import RestrictedZone
+        zone = RestrictedZone("Loading Bay", [(600, 600), (900, 600), (900, 900), (600, 900)])
+        evaluator = SafetyZoneEvaluator()
+
+        res = evaluator.evaluate_detections([], frame_idx=0, is_video=False, zones=[zone])
+        assert res["has_hazard"] is False
+        assert len(res["alerts"]) == 0
+        assert len(res["active_incidents"]) == 0
+

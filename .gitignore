@@ -72,3 +72,6 @@ htmlcov/
 
 # Docker local overrides
 docker-compose.override.yml
+
+# Local database storage
+data/

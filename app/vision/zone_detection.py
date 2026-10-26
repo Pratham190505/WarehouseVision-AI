@@ -100,7 +100,7 @@ class ZoneDetector:
         Check detections against restricted zones.
 
         Args:
-            detections: List of detection dicts with 'center', 'class', etc.
+            detections: List of detection dicts with 'center', 'bbox', 'class', etc.
 
         Returns:
             Dict with violation count and details.
@@ -109,15 +109,27 @@ class ZoneDetector:
         total_violations = 0
 
         for detection in detections:
-            center = tuple(detection.get("center", [0, 0]))
-            obj_class = detection.get("class", "unknown")
+            bbox = detection.get("bbox")
+            if bbox and len(bbox) == 4:
+                ground_pt = ((bbox[0] + bbox[2]) // 2, bbox[3])
+                center_pt = ((bbox[0] + bbox[2]) // 2, (bbox[1] + bbox[3]) // 2)
+            else:
+                raw_center = detection.get("center", [0, 0])
+                ground_pt = tuple(raw_center)
+                center_pt = tuple(raw_center)
+
+            from app.vision.safety_config import normalize_class
+            raw_cls = detection.get("class", "unknown")
+            obj_class = normalize_class(raw_cls)
 
             for zone in self.zones:
-                if zone.contains_point(center):
+                if zone.contains_point(ground_pt) or zone.contains_point(center_pt):
                     violations.append({
                         "zone": zone.name,
                         "object_class": obj_class,
-                        "position": center,
+                        "raw_class": raw_cls,
+                        "position": ground_pt,
+                        "center": center_pt,
                         "confidence": detection.get("confidence", 0),
                     })
                     total_violations += 1

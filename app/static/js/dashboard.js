@@ -1009,15 +1009,17 @@ const Dashboard = (() => {
     // ===== Machine Safety Monitoring =====
     async function loadSafetyData() {
         try {
-            const [alertsRes, eventsRes, configRes] = await Promise.allSettled([
+            const [alertsRes, eventsRes, configRes, summaryRes] = await Promise.allSettled([
                 fetch('/api/safety/alerts'),
                 fetch('/api/safety/events?limit=50'),
                 fetch('/api/safety/config'),
+                fetch('/api/safety/summary'),
             ]);
 
             let activeAlerts = [];
             let events = [];
             let config = null;
+            let summary = null;
 
             if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
                 const data = await alertsRes.value.json();
@@ -1033,16 +1035,20 @@ const Dashboard = (() => {
                 config = await configRes.value.json();
             }
 
+            if (summaryRes.status === 'fulfilled' && summaryRes.value.ok) {
+                summary = await summaryRes.json();
+            }
+
             // Render prominent red alert banner
             renderActiveSafetyBanner(activeAlerts);
 
             // Render safety table
             renderSafetyEventsTable(events);
 
-            // Update safety KPIs
-            const activeCount = activeAlerts.length;
-            const totalCount = events.length;
-            const resolvedCount = events.filter(e => e.status === 'RESOLVED').length;
+            // Update safety KPIs derived directly from persisted data
+            const activeCount = summary ? summary.active : activeAlerts.length;
+            const totalCount = summary ? summary.total : events.length;
+            const resolvedCount = summary ? summary.resolved : events.filter(e => e.status === 'RESOLVED').length;
 
             if (els.kpiSafetyActive) {
                 els.kpiSafetyActive.textContent = activeCount.toString();
@@ -1083,16 +1089,25 @@ const Dashboard = (() => {
         if (els.navAlertBadge) els.navAlertBadge.classList.add('active');
 
         els.activeSafetyAlertsBanner.innerHTML = alerts.map(alert => {
-            const mId = alert.machine_id ? alert.machine_id : (alert.machine_type ? capitalize(alert.machine_type) + ' #' + (alert.machine_track_id || '') : 'Forklift');
+            const isZoneViolation = alert.event_type === 'restricted_zone_violation';
+            const zoneName = alert.zone_name;
+            const mId = alert.machine_id ? alert.machine_id : (alert.machine_type ? capitalize(alert.machine_type) + (alert.machine_track_id ? ' #' + alert.machine_track_id : '') : null);
             const wId = alert.worker_id ? alert.worker_id : ('Worker #' + (alert.worker_track_id || ''));
             const isAck = alert.is_acknowledged;
             const statusLabel = isAck ? 'ACTIVE (ACKNOWLEDGED)' : 'ACTIVE';
             const statusBadgeClass = isAck ? 'status-badge acknowledged' : 'status-badge danger';
 
+            const title = isZoneViolation ? 'RESTRICTED-ZONE VIOLATION' : 'MACHINE PROXIMITY ALERT';
+            const subtitle = isZoneViolation 
+                ? `Worker detected inside the ${escapeHtml(zoneName || 'Loading Bay')} restricted area.`
+                : `Worker detected inside a hazardous machine's safety zone.`;
+
             // Distance: Show ONLY if reliably estimated in metres
             let distanceDisplay = '';
             if (alert.estimated_distance_m !== null && alert.estimated_distance_m !== undefined) {
                 distanceDisplay = `${alert.estimated_distance_m} m ${alert.configured_threshold_m ? `(Threshold: ${alert.configured_threshold_m}m)` : ''}`;
+            } else if (isZoneViolation) {
+                distanceDisplay = `Restricted area breach: ${escapeHtml(zoneName || 'Loading Bay')}`;
             } else {
                 distanceDisplay = alert.proximity_label || 'Zone breach (Image-space proximity)';
             }
@@ -1107,20 +1122,28 @@ const Dashboard = (() => {
                             <span class="safety-alert-icon">⚠️</span>
                             <div>
                                 <div class="safety-alert-title">
-                                    <span>MACHINE PROXIMITY ALERT</span>
+                                    <span>${escapeHtml(title)}</span>
                                     <span class="${statusBadgeClass}">${statusLabel}</span>
-                                    <span class="status-badge danger" style="font-size:11px;">${alert.severity || 'HIGH'}</span>
+                                    <span class="status-badge danger" style="font-size:11px;">${escapeHtml(alert.severity || 'HIGH')}</span>
                                 </div>
-                                <div class="safety-alert-subtitle">Worker detected inside a hazardous machine's safety zone.</div>
+                                <div class="safety-alert-subtitle">${subtitle}</div>
                             </div>
                         </div>
                     </div>
 
                     <div class="safety-alert-grid">
-                        <div class="safety-meta-item">
-                            <span class="safety-meta-label">Machine</span>
-                            <span class="safety-meta-val">🏗️ ${escapeHtml(mId)}</span>
-                        </div>
+                        ${zoneName ? `
+                            <div class="safety-meta-item">
+                                <span class="safety-meta-label">Zone</span>
+                                <span class="safety-meta-val">📍 ${escapeHtml(zoneName)}</span>
+                            </div>
+                        ` : ''}
+                        ${mId ? `
+                            <div class="safety-meta-item">
+                                <span class="safety-meta-label">Machine</span>
+                                <span class="safety-meta-val">🏗️ ${escapeHtml(mId)}</span>
+                            </div>
+                        ` : ''}
                         <div class="safety-meta-item">
                             <span class="safety-meta-label">Worker</span>
                             <span class="safety-meta-val">👷 ${escapeHtml(wId)}</span>
@@ -1172,11 +1195,27 @@ const Dashboard = (() => {
         }
 
         els.safetyEventsBody.innerHTML = events.map(ev => {
-            const mId = ev.machine_track_id ? `${capitalize(ev.machine_type || 'machine')} #${ev.machine_track_id}` : capitalize(ev.machine_type || 'machine');
+            const isZone = ev.event_type === 'restricted_zone_violation';
+            let targetDisplay = '';
+            if (isZone && ev.zone_name) {
+                targetDisplay = `📍 ${escapeHtml(ev.zone_name)}`;
+                if (ev.machine_type || ev.machine_track_id) {
+                    targetDisplay += `<br><small style="color:var(--text-secondary);">🏗️ ${capitalize(ev.machine_type || 'Machine')} #${ev.machine_track_id || ''}</small>`;
+                }
+            } else {
+                const mName = ev.machine_type ? capitalize(ev.machine_type) : 'Machine';
+                const mTrack = ev.machine_track_id ? ` #${ev.machine_track_id}` : '';
+                targetDisplay = `🏗️ ${escapeHtml(mName + mTrack)}`;
+            }
+
             const wId = ev.worker_track_id ? `Worker #${ev.worker_track_id}` : 'Worker';
-            const dist = (ev.estimated_distance_m !== null && ev.estimated_distance_m !== undefined)
-                ? `${ev.estimated_distance_m} m`
-                : 'Perimeter Breach (Image-space)';
+            let dist = 'Perimeter Breach (Image-space)';
+            if (ev.estimated_distance_m !== null && ev.estimated_distance_m !== undefined) {
+                dist = `${ev.estimated_distance_m} m`;
+            } else if (isZone && ev.zone_name) {
+                dist = `Restricted Zone (${escapeHtml(ev.zone_name)})`;
+            }
+
             const status = ev.status || 'ACTIVE';
             const isAck = ev.is_acknowledged;
             const timeStr = ev.last_detected_at ? formatDate(ev.last_detected_at) : (ev.first_detected_at ? formatDate(ev.first_detected_at) : '--');
@@ -1184,10 +1223,10 @@ const Dashboard = (() => {
 
             return `
                 <tr>
-                    <td><strong>🏗️ ${escapeHtml(mId)}</strong></td>
+                    <td><strong>${targetDisplay}</strong></td>
                     <td>👷 ${escapeHtml(wId)}</td>
                     <td><span title="${escapeHtml(ev.proximity_method || '')}">📏 ${escapeHtml(dist)}</span></td>
-                    <td><span class="status-badge ${ev.severity === 'CRITICAL' ? 'danger' : 'warning'}">${ev.severity || 'HIGH'}</span></td>
+                    <td><span class="status-badge ${ev.severity === 'CRITICAL' ? 'danger' : 'warning'}">${escapeHtml(ev.severity || 'HIGH')}</span></td>
                     <td><span class="status-badge ${status === 'ACTIVE' ? 'danger' : 'completed'}">${status}</span></td>
                     <td><span class="status-badge ${isAck ? 'acknowledged' : 'pending'}">${isAck ? 'Acknowledged' : 'Unacknowledged'}</span></td>
                     <td>${timeStr}</td>

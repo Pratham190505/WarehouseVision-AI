@@ -10,7 +10,7 @@ from pymongo import MongoClient
 from pymongo.database import Database
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ def connect_db() -> Optional[Database]:
     """Connect to MongoDB. Returns the database instance or None if connection fails."""
     global _client, _db
 
+    load_dotenv(override=True)
     mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
     db_name = os.getenv("MONGO_DB_NAME", "warehousevision")
 
@@ -61,7 +62,10 @@ def get_db() -> Optional[Database]:
 
 
 def get_collection(name: str):
-    """Get a collection from the database. Returns None if not connected."""
+    """Get a collection from the database. Auto-connects if not already connected. Returns None if connection fails."""
+    global _db
+    if _db is None:
+        connect_db()
     if _db is None:
         return None
     return _db[name]

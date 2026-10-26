@@ -42,6 +42,19 @@ async def get_config(user: dict = Depends(get_current_user)):
     return JSONResponse(content=jsonable_encoder(config.to_dict()))
 
 
+@router.get("/safety/summary")
+async def get_safety_summary(
+    user: dict = Depends(get_current_user),
+):
+    """
+    Get safety analytics summary (active, total, resolved counts) scoped strictly to authenticated user.
+    """
+    service = get_processing_service()
+    user_id = str(user.get("id"))
+    summary = service.get_safety_summary(user_id=user_id)
+    return JSONResponse(content=jsonable_encoder(summary))
+
+
 @router.get("/safety/alerts")
 async def get_active_alerts(
     user: dict = Depends(get_current_user),

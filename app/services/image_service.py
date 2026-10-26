@@ -85,12 +85,13 @@ class ImageService:
             # 4. Inventory Analysis
             inventory_result = self.inventory_analyzer.analyze(detections, (h, w))
 
-            # 5. Machine Proximity Safety Zone Evaluation
+            # 5. Machine Proximity Safety Zone & Restricted Zone Evaluation
             safety_result = self.safety_evaluator.evaluate_detections(
                 detections=detections,
                 frame_idx=0,
                 is_video=False,
                 image_shape=(h, w),
+                zones=self.zone_detector.zones,
             )
             safety_alerts = safety_result.get("alerts", [])
             annotated = self.safety_evaluator.annotate_frame(annotated, safety_alerts, detections)
