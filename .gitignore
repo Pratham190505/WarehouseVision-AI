@@ -1,18 +1,20 @@
-# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized Python files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 *.pyd
 
-# C extensions
+# C extensions and compiled files
 *.obj
 *.o
 *.a
 *.lib
+*.dll
 
 # Virtual environments
 venv/
+venv311/
 .venv/
 env/
 ENV/
@@ -21,17 +23,17 @@ venv.bak/
 
 # Environment and sensitive keys
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.pem
 *.key
 
-# Uploads and processed results (user data & media)
+# Uploads and processed results (user data and media)
 uploads/
 results/
 scratch/
 
-# Models (large binary YOLO/Torch weights)
+# Models and large binary weights
 models/*.pt
 models/*.onnx
 models/*.engine
@@ -39,7 +41,14 @@ models/*.tflite
 models/*.bin
 !models/.gitkeep
 
-# IDE and Editor configurations
+# Root-level model weights
+/*.pt
+/*.onnx
+/*.engine
+/*.tflite
+/*.bin
+
+# IDE and editor configurations
 .vscode/
 .idea/
 *.swp
@@ -49,7 +58,7 @@ models/*.bin
 .pydevproject
 .settings/
 
-# Operating System files
+# Operating system files
 .DS_Store
 .DS_Store?
 ._*
@@ -65,7 +74,7 @@ htmlcov/
 .tox/
 .nox/
 
-# Logs and databases
+# Logs and local databases
 *.log
 *.sqlite
 *.sqlite3
@@ -75,3 +84,15 @@ docker-compose.override.yml
 
 # Local database storage
 data/
+
+# Build and distribution artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Temporary files
+*.tmp
+*.temp
