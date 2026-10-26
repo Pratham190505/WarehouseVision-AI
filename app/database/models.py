@@ -54,6 +54,9 @@ class AnalysisRecord(BaseModel):
     file_size: int = 0
     media_path: str = ""
 
+    safety_alerts_count: int = 0
+    safety_incidents: List[Dict[str, Any]] = Field(default_factory=list)
+
     class Config:
         json_encoders = {
             datetime: lambda v: v.isoformat()
@@ -68,6 +71,49 @@ class AnalysisRecord(BaseModel):
 
     @classmethod
     def from_mongo(cls, doc: dict) -> "AnalysisRecord":
+        """Create from MongoDB document."""
+        if "_id" in doc:
+            doc.pop("_id")
+        return cls(**doc)
+
+
+class SafetyEventRecord(BaseModel):
+    """Safety proximity event record stored in MongoDB safety_events collection."""
+    event_id: str
+    user_id: Optional[str] = None
+    analysis_id: str
+    worker_track_id: Optional[str] = None
+    machine_track_id: Optional[str] = None
+    machine_type: str = "forklift"
+    proximity_method: str = "image_space_proximity"
+    estimated_distance_m: Optional[float] = None
+    configured_threshold_m: Optional[float] = None
+    severity: str = "HIGH"  # CRITICAL, HIGH, WARNING
+    status: str = "ACTIVE"  # ACTIVE, RESOLVED
+    is_acknowledged: bool = False
+    acknowledged_at: Optional[datetime] = None
+    acknowledged_by: Optional[str] = None
+    first_detected_at: datetime = Field(default_factory=datetime.utcnow)
+    last_detected_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+    def to_mongo(self) -> dict:
+        """Convert to MongoDB document."""
+        data = self.model_dump()
+        data["first_detected_at"] = self.first_detected_at
+        data["last_detected_at"] = self.last_detected_at
+        data["created_at"] = self.created_at
+        if self.acknowledged_at:
+            data["acknowledged_at"] = self.acknowledged_at
+        return data
+
+    @classmethod
+    def from_mongo(cls, doc: dict) -> "SafetyEventRecord":
         """Create from MongoDB document."""
         if "_id" in doc:
             doc.pop("_id")
@@ -136,6 +182,8 @@ class AnalysisResponse(BaseModel):
     result_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
     error_message: Optional[str] = None
+    safety_alerts_count: int = 0
+    safety_incidents: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class DashboardStats(BaseModel):
@@ -149,3 +197,6 @@ class DashboardStats(BaseModel):
     avg_occupancy: float = 0.0
     avg_space_utilization: float = 0.0
     total_violations: int = 0
+    active_safety_alerts: int = 0
+    total_safety_events: int = 0
+    resolved_safety_events: int = 0

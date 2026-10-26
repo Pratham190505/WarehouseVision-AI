@@ -10,12 +10,12 @@ import uuid
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from app.services.image_service import ImageService
 from app.services.video_service import VideoService
 from app.database.mongodb import get_collection
-from app.database.models import AnalysisRecord, ObjectCounts, AnalyticsData
+from app.database.models import AnalysisRecord, ObjectCounts, AnalyticsData, SafetyEventRecord
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,7 @@ class ProcessingService:
         self.image_service = ImageService()
         self.video_service = VideoService()
         self._in_memory_analyses: Dict[str, Dict[str, Any]] = {}
+        self._in_memory_safety_events: Dict[str, Dict[str, Any]] = {}
 
     def create_analysis(self, filename: str, original_filename: str,
                         media_type: str, file_size: int,
@@ -163,6 +164,9 @@ class ProcessingService:
     def _save_result(self, analysis_id: str, result: Dict[str, Any],
                      media_type: str):
         """Save analysis result to MongoDB and in-memory cache."""
+        safety_incidents = result.get("safety_incidents", []) or result.get("safety_alerts", [])
+        safety_alerts_count = len(safety_incidents)
+
         update_data = {
             "status": result.get("status", "completed"),
             "processing_time": result.get("processing_time", 0),
@@ -170,6 +174,8 @@ class ProcessingService:
             "thumbnail_path": result.get("thumbnail_path"),
             "error_message": result.get("error_message"),
             "object_counts": result.get("object_counts", {}),
+            "safety_alerts_count": safety_alerts_count,
+            "safety_incidents": [serialize_mongo_doc(inc) for inc in safety_incidents],
             "analytics": {
                 "occupancy": result.get("analytics", {}).get("occupancy", 0),
                 "space_utilization": result.get("analytics", {}).get("space_utilization", 0),
@@ -190,6 +196,20 @@ class ProcessingService:
                 "processed_frames": tracking.get("processed_frames", 0),
                 "frame_data": tracking.get("frame_data", [])[:100],
             }
+
+        # Retrieve user_id from existing analysis
+        user_id = None
+        if analysis_id in self._in_memory_analyses:
+            user_id = self._in_memory_analyses[analysis_id].get("user_id")
+        else:
+            coll = get_collection("analyses")
+            if coll is not None:
+                existing = coll.find_one({"analysis_id": analysis_id}, {"user_id": 1})
+                if existing:
+                    user_id = existing.get("user_id")
+
+        # Persist safety events
+        self._persist_safety_events(analysis_id, user_id, safety_incidents)
 
         # Update in-memory fallback
         if analysis_id in self._in_memory_analyses:
@@ -332,6 +352,25 @@ class ProcessingService:
                 agg_result = list(collection.aggregate(pipeline))
                 stats = agg_result[0] if agg_result else {}
 
+                # Safety events stats in MongoDB
+                safety_coll = get_collection("safety_events")
+                active_safety_alerts = 0
+                total_safety_events = 0
+                resolved_safety_events = 0
+                if safety_coll is not None:
+                    sq = {"user_id": user_id} if user_id else {}
+                    total_safety_events = safety_coll.count_documents(sq)
+                    active_safety_alerts = safety_coll.count_documents({**sq, "status": "ACTIVE"})
+                    resolved_safety_events = safety_coll.count_documents({**sq, "status": "RESOLVED"})
+                else:
+                    user_safety = [
+                        e for e in self._in_memory_safety_events.values()
+                        if not user_id or e.get("user_id") == user_id
+                    ]
+                    total_safety_events = len(user_safety)
+                    active_safety_alerts = len([e for e in user_safety if e.get("status") == "ACTIVE"])
+                    resolved_safety_events = len([e for e in user_safety if e.get("status") == "RESOLVED"])
+
                 return {
                     "total_analyses": total,
                     "latest_analysis": latest_clean,
@@ -342,6 +381,9 @@ class ProcessingService:
                     "avg_occupancy": round(stats.get("avg_occupancy", 0), 1),
                     "avg_space_utilization": round(stats.get("avg_space_utilization", 0), 1),
                     "total_violations": stats.get("total_violations", 0),
+                    "active_safety_alerts": active_safety_alerts,
+                    "total_safety_events": total_safety_events,
+                    "resolved_safety_events": resolved_safety_events,
                 }
             except Exception as e:
                 logger.error(f"Failed to get dashboard stats: {e}")
@@ -362,6 +404,14 @@ class ProcessingService:
         avg_occupancy = round(sum(a.get("analytics", {}).get("occupancy", 0) for a in completed) / len(completed), 1) if completed else 0
         avg_util = round(sum(a.get("analytics", {}).get("space_utilization", 0) for a in completed) / len(completed), 1) if completed else 0
 
+        user_safety = [
+            e for e in self._in_memory_safety_events.values()
+            if not user_id or e.get("user_id") == user_id
+        ]
+        total_safety_events = len(user_safety)
+        active_safety_alerts = len([e for e in user_safety if e.get("status") == "ACTIVE"])
+        resolved_safety_events = len([e for e in user_safety if e.get("status") == "RESOLVED"])
+
         return {
             "total_analyses": len(user_analyses),
             "latest_analysis": serialize_mongo_doc(latest) if latest else None,
@@ -372,4 +422,225 @@ class ProcessingService:
             "avg_occupancy": avg_occupancy,
             "avg_space_utilization": avg_util,
             "total_violations": total_violations,
+            "active_safety_alerts": active_safety_alerts,
+            "total_safety_events": total_safety_events,
+            "resolved_safety_events": resolved_safety_events,
         }
+
+    def _persist_safety_events(
+        self,
+        analysis_id: str,
+        user_id: Optional[str],
+        incidents: List[Dict[str, Any]],
+    ):
+        """
+        Persist safety events into MongoDB 'safety_events' collection and in-memory store.
+        Avoids creating duplicate events for the same incident; updates existing active incidents.
+        """
+        now = datetime.utcnow()
+        collection = get_collection("safety_events")
+
+        for inc in incidents:
+            event_id = inc.get("event_id") or inc.get("incident_id")
+            wid = str(inc.get("worker_track_id") or inc.get("worker_id") or "worker").replace("Worker #", "")
+            mid = str(inc.get("machine_track_id") or inc.get("machine_id") or "machine")
+            if "#" in mid:
+                mid = mid.split("#")[-1]
+
+            if not event_id:
+                event_id = f"{analysis_id}_{wid}_{mid}"
+
+            machine_type = inc.get("machine_type", "forklift")
+            proximity_method = inc.get("proximity_method", "image_space_proximity")
+            dist_m = inc.get("estimated_distance_m")
+            thresh_m = inc.get("configured_threshold_m")
+            severity = inc.get("severity", "HIGH")
+            status = inc.get("status", "ACTIVE")
+
+            first_detected = inc.get("first_detected_at")
+            if isinstance(first_detected, str):
+                try:
+                    first_detected = datetime.fromisoformat(first_detected.replace("Z", "+00:00"))
+                except Exception:
+                    first_detected = now
+            elif not isinstance(first_detected, datetime):
+                first_detected = now
+
+            last_detected = inc.get("last_detected_at")
+            if isinstance(last_detected, str):
+                try:
+                    last_detected = datetime.fromisoformat(last_detected.replace("Z", "+00:00"))
+                except Exception:
+                    last_detected = now
+            elif not isinstance(last_detected, datetime):
+                last_detected = now
+
+            event_doc = {
+                "event_id": event_id,
+                "user_id": user_id,
+                "analysis_id": analysis_id,
+                "worker_track_id": wid,
+                "machine_track_id": mid,
+                "machine_type": machine_type,
+                "proximity_method": proximity_method,
+                "estimated_distance_m": dist_m,
+                "configured_threshold_m": thresh_m,
+                "severity": severity,
+                "status": status,
+                "is_acknowledged": inc.get("is_acknowledged", False),
+                "acknowledged_at": inc.get("acknowledged_at"),
+                "acknowledged_by": inc.get("acknowledged_by"),
+                "first_detected_at": first_detected,
+                "last_detected_at": last_detected,
+                "created_at": now,
+            }
+
+            # Update or insert in in-memory store
+            if event_id in self._in_memory_safety_events:
+                existing = self._in_memory_safety_events[event_id]
+                existing["last_detected_at"] = last_detected
+                existing["status"] = status
+                if dist_m is not None:
+                    existing["estimated_distance_m"] = dist_m
+            else:
+                self._in_memory_safety_events[event_id] = event_doc.copy()
+
+            # Update or insert in MongoDB
+            if collection is not None:
+                try:
+                    collection.update_one(
+                        {"event_id": event_id},
+                        {
+                            "$set": {
+                                "last_detected_at": last_detected,
+                                "status": status,
+                                "estimated_distance_m": dist_m,
+                                "configured_threshold_m": thresh_m,
+                                "severity": severity,
+                            },
+                            "$setOnInsert": {
+                                "event_id": event_id,
+                                "user_id": user_id,
+                                "analysis_id": analysis_id,
+                                "worker_track_id": wid,
+                                "machine_track_id": mid,
+                                "machine_type": machine_type,
+                                "proximity_method": proximity_method,
+                                "is_acknowledged": False,
+                                "acknowledged_at": None,
+                                "first_detected_at": first_detected,
+                                "created_at": now,
+                            }
+                        },
+                        upsert=True
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to persist safety event {event_id}: {e}")
+
+    def get_safety_events(
+        self,
+        user_id: Optional[str] = None,
+        status: Optional[str] = None,
+        analysis_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Get safety events filtered strictly by user_id and optional filters."""
+        query: Dict[str, Any] = {}
+        if user_id:
+            query["user_id"] = user_id
+        if status:
+            query["status"] = status
+        if analysis_id:
+            query["analysis_id"] = analysis_id
+
+        collection = get_collection("safety_events")
+        if collection is not None:
+            try:
+                cursor = collection.find(query).sort("last_detected_at", -1).limit(limit)
+                return [serialize_mongo_doc(doc) for doc in cursor]
+            except Exception as e:
+                logger.error(f"Failed to fetch safety events from MongoDB: {e}")
+
+        # In-memory fallback
+        results = []
+        for doc in sorted(self._in_memory_safety_events.values(), key=lambda x: str(x.get("last_detected_at", "")), reverse=True):
+            if user_id and doc.get("user_id") != user_id:
+                continue
+            if status and doc.get("status") != status:
+                continue
+            if analysis_id and doc.get("analysis_id") != analysis_id:
+                continue
+            results.append(serialize_mongo_doc(doc))
+            if len(results) >= limit:
+                break
+        return results
+
+    def get_active_safety_alerts(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get currently active safety alerts for user."""
+        return self.get_safety_events(user_id=user_id, status="ACTIVE", limit=20)
+
+    def get_safety_event(self, event_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get single safety event ensuring user ownership."""
+        collection = get_collection("safety_events")
+        if collection is not None:
+            try:
+                query = {"event_id": event_id}
+                if user_id:
+                    query["user_id"] = user_id
+                doc = collection.find_one(query)
+                if doc:
+                    return serialize_mongo_doc(doc)
+                return None
+            except Exception as e:
+                logger.error(f"Failed to fetch safety event {event_id}: {e}")
+
+        doc = self._in_memory_safety_events.get(event_id)
+        if doc:
+            if user_id and doc.get("user_id") != user_id:
+                return None
+            return serialize_mongo_doc(doc)
+        return None
+
+    def acknowledge_safety_event(
+        self,
+        event_id: str,
+        user_id: Optional[str] = None,
+        acknowledged_by: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Acknowledge a safety alert.
+        IMPORTANT: Acknowledging does NOT make an active hazard safe!
+        The event's physical status remains ACTIVE until the worker leaves the zone.
+        """
+        event = self.get_safety_event(event_id, user_id=user_id)
+        if not event:
+            return None
+
+        now = datetime.utcnow()
+        ack_data = {
+            "is_acknowledged": True,
+            "acknowledged_at": now.isoformat(),
+            "acknowledged_by": acknowledged_by or user_id or "user",
+        }
+
+        # Update in-memory
+        if event_id in self._in_memory_safety_events:
+            self._in_memory_safety_events[event_id].update(ack_data)
+
+        # Update MongoDB
+        collection = get_collection("safety_events")
+        if collection is not None:
+            try:
+                collection.update_one(
+                    {"event_id": event_id},
+                    {"$set": {
+                        "is_acknowledged": True,
+                        "acknowledged_at": now,
+                        "acknowledged_by": acknowledged_by or user_id or "user",
+                    }},
+                )
+            except Exception as e:
+                logger.error(f"Failed to update safety event acknowledgement: {e}")
+
+        # Return updated event
+        return self.get_safety_event(event_id, user_id=user_id)

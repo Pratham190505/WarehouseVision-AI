@@ -105,6 +105,19 @@ const Dashboard = (() => {
         els.settingsEmailPreview = document.getElementById('settingsEmailPreview');
         els.settingsSaveBtn = document.getElementById('settingsSaveBtn');
         els.settingsSaveText = document.getElementById('settingsSaveText');
+
+        // Safety Elements
+        els.activeSafetyAlertsBanner = document.getElementById('activeSafetyAlertsBanner');
+        els.navSafetyBtn = document.getElementById('navSafetyBtn');
+        els.navAlertBadge = document.getElementById('navAlertBadge');
+        els.kpiSafetyActive = document.getElementById('kpiSafetyActive');
+        els.kpiSafetyActiveMeta = document.getElementById('kpiSafetyActiveMeta');
+        els.kpiSafetyTotal = document.getElementById('kpiSafetyTotal');
+        els.kpiSafetyResolved = document.getElementById('kpiSafetyResolved');
+        els.kpiSafetyMode = document.getElementById('kpiSafetyMode');
+        els.kpiSafetyModeMeta = document.getElementById('kpiSafetyModeMeta');
+        els.safetyEventsBody = document.getElementById('safetyEventsBody');
+        els.refreshSafetyBtn = document.getElementById('refreshSafetyBtn');
     }
 
     function bindEvents() {
@@ -126,6 +139,12 @@ const Dashboard = (() => {
         }
         if (els.chooseBtn) {
             els.chooseBtn.addEventListener('click', () => els.fileInput?.click());
+        }
+        if (els.refreshSafetyBtn) {
+            els.refreshSafetyBtn.addEventListener('click', () => {
+                loadSafetyData();
+                showToast('Safety alerts refreshed.', 'info');
+            });
         }
 
         // Sidebar
@@ -530,6 +549,13 @@ const Dashboard = (() => {
 
         // Insights
         renderInsights(analytics.insights || []);
+
+        // Machine Proximity Safety Alerts
+        if (data.safety_alerts && data.safety_alerts.length > 0) {
+            renderActiveSafetyBanner(data.safety_alerts);
+            showToast(`🚨 Machine Proximity Alert: ${data.safety_alerts.length} danger breach detected!`, 'error');
+        }
+        loadSafetyData();
     }
 
     function updateKPI(elId, value, metaId) {
@@ -612,6 +638,17 @@ const Dashboard = (() => {
                     <div class="result-count-badge" style="border-left:3px solid var(--success);">
                         <span class="count-label">Frames</span>
                         <span class="count-value">${tr.processed_frames ?? 0} / ${tr.total_frames ?? 0}</span>
+                    </div>
+                `;
+            }
+
+            // If safety breaches exist, add safety badge
+            if ((data.safety_incidents && data.safety_incidents.length > 0) || (data.safety_alerts && data.safety_alerts.length > 0)) {
+                const sCount = (data.safety_incidents ? data.safety_incidents.length : 0) || (data.safety_alerts ? data.safety_alerts.length : 0);
+                badgesHtml += `
+                    <div class="result-count-badge" style="border-left:3px solid var(--danger);background:var(--danger-alert-badge);">
+                        <span class="count-label" style="color:var(--danger-alert-badge-text);font-weight:700;">⚠️ Safety Proximity Alert</span>
+                        <span class="count-value" style="color:var(--danger);font-weight:800;">${sCount} Hazard${sCount > 1 ? 's' : ''}</span>
                     </div>
                 `;
             }
@@ -724,6 +761,9 @@ const Dashboard = (() => {
 
         // Render history
         renderHistory(history);
+
+        // Load machine safety events & alerts
+        loadSafetyData();
     }
 
     function renderHistory(history) {
@@ -966,8 +1006,244 @@ const Dashboard = (() => {
         }
     }
 
+    // ===== Machine Safety Monitoring =====
+    async function loadSafetyData() {
+        try {
+            const [alertsRes, eventsRes, configRes] = await Promise.allSettled([
+                fetch('/api/safety/alerts'),
+                fetch('/api/safety/events?limit=50'),
+                fetch('/api/safety/config'),
+            ]);
+
+            let activeAlerts = [];
+            let events = [];
+            let config = null;
+
+            if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
+                const data = await alertsRes.value.json();
+                activeAlerts = data.alerts || [];
+            }
+
+            if (eventsRes.status === 'fulfilled' && eventsRes.value.ok) {
+                const data = await eventsRes.value.json();
+                events = data.events || [];
+            }
+
+            if (configRes.status === 'fulfilled' && configRes.value.ok) {
+                config = await configRes.value.json();
+            }
+
+            // Render prominent red alert banner
+            renderActiveSafetyBanner(activeAlerts);
+
+            // Render safety table
+            renderSafetyEventsTable(events);
+
+            // Update safety KPIs
+            const activeCount = activeAlerts.length;
+            const totalCount = events.length;
+            const resolvedCount = events.filter(e => e.status === 'RESOLVED').length;
+
+            if (els.kpiSafetyActive) {
+                els.kpiSafetyActive.textContent = activeCount.toString();
+            }
+            if (els.kpiSafetyActiveMeta) {
+                els.kpiSafetyActiveMeta.textContent = activeCount > 0 
+                    ? `${activeCount} hazard${activeCount > 1 ? 's' : ''} currently active!` 
+                    : 'No active breaches';
+            }
+            if (els.kpiSafetyTotal) {
+                els.kpiSafetyTotal.textContent = totalCount.toString();
+            }
+            if (els.kpiSafetyResolved) {
+                els.kpiSafetyResolved.textContent = resolvedCount.toString();
+            }
+            if (els.kpiSafetyMode) {
+                const isCalibrated = config && config.camera_calibration && config.camera_calibration.enabled;
+                els.kpiSafetyMode.textContent = isCalibrated ? 'Metric (m)' : 'Image-Space';
+            }
+            if (els.kpiSafetyModeMeta) {
+                const isCalibrated = config && config.camera_calibration && config.camera_calibration.enabled;
+                els.kpiSafetyModeMeta.textContent = isCalibrated ? 'Calibrated Ground-Plane' : 'Perimeter danger zone';
+            }
+
+        } catch (err) {
+            console.warn('Error loading safety data:', err);
+        }
+    }
+
+    function renderActiveSafetyBanner(alerts) {
+        if (!els.activeSafetyAlertsBanner) return;
+        if (!alerts || alerts.length === 0) {
+            els.activeSafetyAlertsBanner.innerHTML = '';
+            if (els.navAlertBadge) els.navAlertBadge.classList.remove('active');
+            return;
+        }
+
+        if (els.navAlertBadge) els.navAlertBadge.classList.add('active');
+
+        els.activeSafetyAlertsBanner.innerHTML = alerts.map(alert => {
+            const mId = alert.machine_id ? alert.machine_id : (alert.machine_type ? capitalize(alert.machine_type) + ' #' + (alert.machine_track_id || '') : 'Forklift');
+            const wId = alert.worker_id ? alert.worker_id : ('Worker #' + (alert.worker_track_id || ''));
+            const isAck = alert.is_acknowledged;
+            const statusLabel = isAck ? 'ACTIVE (ACKNOWLEDGED)' : 'ACTIVE';
+            const statusBadgeClass = isAck ? 'status-badge acknowledged' : 'status-badge danger';
+
+            // Distance: Show ONLY if reliably estimated in metres
+            let distanceDisplay = '';
+            if (alert.estimated_distance_m !== null && alert.estimated_distance_m !== undefined) {
+                distanceDisplay = `${alert.estimated_distance_m} m ${alert.configured_threshold_m ? `(Threshold: ${alert.configured_threshold_m}m)` : ''}`;
+            } else {
+                distanceDisplay = alert.proximity_label || 'Zone breach (Image-space proximity)';
+            }
+
+            const timeStr = alert.last_detected_at ? formatDate(alert.last_detected_at) : (alert.timestamp ? formatDate(alert.timestamp) : 'Active now');
+            const eventId = alert.event_id || alert.incident_id || '';
+
+            return `
+                <div class="safety-alert-banner" data-event-id="${escapeHtml(eventId)}">
+                    <div class="safety-alert-header">
+                        <div class="safety-alert-title-wrap">
+                            <span class="safety-alert-icon">⚠️</span>
+                            <div>
+                                <div class="safety-alert-title">
+                                    <span>MACHINE PROXIMITY ALERT</span>
+                                    <span class="${statusBadgeClass}">${statusLabel}</span>
+                                    <span class="status-badge danger" style="font-size:11px;">${alert.severity || 'HIGH'}</span>
+                                </div>
+                                <div class="safety-alert-subtitle">Worker detected inside a hazardous machine's safety zone.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="safety-alert-grid">
+                        <div class="safety-meta-item">
+                            <span class="safety-meta-label">Machine</span>
+                            <span class="safety-meta-val">🏗️ ${escapeHtml(mId)}</span>
+                        </div>
+                        <div class="safety-meta-item">
+                            <span class="safety-meta-label">Worker</span>
+                            <span class="safety-meta-val">👷 ${escapeHtml(wId)}</span>
+                        </div>
+                        <div class="safety-meta-item">
+                            <span class="safety-meta-label">Proximity / Distance</span>
+                            <span class="safety-meta-val">📏 ${escapeHtml(distanceDisplay)}</span>
+                        </div>
+                        <div class="safety-meta-item">
+                            <span class="safety-meta-label">Status</span>
+                            <span class="safety-meta-val" style="color:var(--danger);">${statusLabel}</span>
+                        </div>
+                    </div>
+
+                    <div class="safety-alert-footer">
+                        <span class="safety-alert-time">
+                            <span>🕒</span> Detected: ${timeStr}
+                        </span>
+                        <div>
+                            ${isAck 
+                                ? `<span style="font-size:12px;color:var(--text-secondary);display:inline-flex;align-items:center;gap:4px;">
+                                    <span>🛡️</span> Acknowledged — Physical Hazard Remains Active
+                                   </span>`
+                                : `<button class="btn-ack-alert" onclick="Dashboard.handleAcknowledgeAlert('${escapeHtml(eventId)}', this)">
+                                    <span>✋</span> Acknowledge Alert
+                                   </button>`
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderSafetyEventsTable(events) {
+        if (!els.safetyEventsBody) return;
+        if (!events || events.length === 0) {
+            els.safetyEventsBody.innerHTML = `
+                <tr>
+                    <td colspan="8">
+                        <div class="history-empty">
+                            <div class="empty-icon">🛡️</div>
+                            <div>No safety incidents recorded yet. Analyze media to monitor machine proximity.</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        els.safetyEventsBody.innerHTML = events.map(ev => {
+            const mId = ev.machine_track_id ? `${capitalize(ev.machine_type || 'machine')} #${ev.machine_track_id}` : capitalize(ev.machine_type || 'machine');
+            const wId = ev.worker_track_id ? `Worker #${ev.worker_track_id}` : 'Worker';
+            const dist = (ev.estimated_distance_m !== null && ev.estimated_distance_m !== undefined)
+                ? `${ev.estimated_distance_m} m`
+                : 'Perimeter Breach (Image-space)';
+            const status = ev.status || 'ACTIVE';
+            const isAck = ev.is_acknowledged;
+            const timeStr = ev.last_detected_at ? formatDate(ev.last_detected_at) : (ev.first_detected_at ? formatDate(ev.first_detected_at) : '--');
+            const eventId = ev.event_id || '';
+
+            return `
+                <tr>
+                    <td><strong>🏗️ ${escapeHtml(mId)}</strong></td>
+                    <td>👷 ${escapeHtml(wId)}</td>
+                    <td><span title="${escapeHtml(ev.proximity_method || '')}">📏 ${escapeHtml(dist)}</span></td>
+                    <td><span class="status-badge ${ev.severity === 'CRITICAL' ? 'danger' : 'warning'}">${ev.severity || 'HIGH'}</span></td>
+                    <td><span class="status-badge ${status === 'ACTIVE' ? 'danger' : 'completed'}">${status}</span></td>
+                    <td><span class="status-badge ${isAck ? 'acknowledged' : 'pending'}">${isAck ? 'Acknowledged' : 'Unacknowledged'}</span></td>
+                    <td>${timeStr}</td>
+                    <td>
+                        ${isAck 
+                            ? `<span style="font-size:12px;color:var(--text-tertiary);">Ack'd ✓</span>`
+                            : `<button class="view-btn" style="padding:4px 10px;font-size:12px;" onclick="Dashboard.handleAcknowledgeAlert('${escapeHtml(eventId)}', this)">
+                                <span>✋</span> Ack
+                               </button>`
+                        }
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function handleAcknowledgeAlert(eventId, buttonEl) {
+        if (!eventId) return;
+        if (buttonEl) {
+            buttonEl.disabled = true;
+            buttonEl.textContent = 'Acknowledging...';
+        }
+
+        try {
+            const res = await fetch(`/api/safety/events/${encodeURIComponent(eventId)}/acknowledge`, {
+                method: 'POST',
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Could not acknowledge alert.');
+            }
+            showToast('Safety alert acknowledged. Note: Physical hazard remains active until cleared.', 'info');
+            await loadSafetyData();
+        } catch (e) {
+            console.error('Failed to acknowledge alert:', e);
+            showToast(e.message || 'Error acknowledging alert.', 'error');
+            if (buttonEl) {
+                buttonEl.disabled = false;
+                buttonEl.textContent = 'Acknowledge Alert';
+            }
+        }
+    }
+
     // Public API
-    return { init, viewAnalysis, showToast, loadDashboardData, scrollToSection, closeModal, openSettingsModal, closeSettingsModal };
+    return {
+        init,
+        viewAnalysis,
+        showToast,
+        loadDashboardData,
+        scrollToSection,
+        closeModal,
+        openSettingsModal,
+        closeSettingsModal,
+        loadSafetyData,
+        handleAcknowledgeAlert,
+    };
 })();
 
 // Initialize on DOM ready

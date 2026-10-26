@@ -24,6 +24,7 @@ from app.vision.zone_detection import ZoneDetector
 from app.vision.occupancy import OccupancyAnalyzer
 from app.vision.inventory import InventoryAnalyzer
 from app.vision.analytics import WarehouseAnalytics
+from app.vision.safety_zone import SafetyZoneEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class VideoService:
         self.occupancy_analyzer = OccupancyAnalyzer()
         self.inventory_analyzer = InventoryAnalyzer()
         self.analytics_engine = WarehouseAnalytics()
+        self.safety_evaluator = SafetyZoneEvaluator()
 
     def process(self, video_path: str, result_dir: str,
                 analysis_id: str = None, frame_skip: int = FRAME_SKIP) -> Dict[str, Any]:
@@ -74,9 +76,10 @@ class VideoService:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            # Reset tracker
+            # Reset tracker and safety evaluator
             self.tracker.reset()
             self.tracker.total_frames = total_frames
+            self.safety_evaluator.reset()
 
             # Set up restricted zones
             if not self.zone_detector.has_zones:
@@ -95,6 +98,7 @@ class VideoService:
             total_zone_violations = 0
             frame_idx = 0
             last_annotated = None
+            latest_safety_alerts = []
 
             while True:
                 ret, frame = cap.read()
@@ -105,22 +109,39 @@ class VideoService:
                     # Track objects
                     annotated, frame_stats = self.tracker.track_frame(frame, frame_idx)
 
-                    # Check zone violations
-                    frame_counts = frame_stats.get("counts", {})
-                    # Build detection-like objects for zone checking
-                    # (Use tracker's internal detections)
-                    if self.detector.is_ready():
+                    # Get detections from tracker or fall back to detector
+                    frame_detections = frame_stats.get("detections", [])
+                    if not frame_detections and self.detector.is_ready():
                         det_result = self.detector.detect(frame)
                         frame_detections = det_result["detections"]
-                        zone_result = self.zone_detector.check_violations(frame_detections)
-                        total_zone_violations += zone_result.get("total_violations", 0)
 
-                        # Draw zones
-                        annotated = self.zone_detector.draw_zones(annotated)
-                        if zone_result["violations"]:
-                            annotated = self.zone_detector.annotate_violations(
-                                annotated, zone_result["violations"]
-                            )
+                    # Check zone violations
+                    frame_counts = frame_stats.get("counts", {})
+                    zone_result = self.zone_detector.check_violations(frame_detections)
+                    total_zone_violations += zone_result.get("total_violations", 0)
+
+                    # Draw zones
+                    annotated = self.zone_detector.draw_zones(annotated)
+                    if zone_result["violations"]:
+                        annotated = self.zone_detector.annotate_violations(
+                            annotated, zone_result["violations"]
+                        )
+
+                    # Check Machine Proximity Safety Zones
+                    safety_eval = self.safety_evaluator.evaluate_detections(
+                        detections=frame_detections,
+                        frame_idx=frame_idx,
+                        is_video=True,
+                        image_shape=(height, width),
+                    )
+                    frame_alerts = safety_eval.get("alerts", [])
+                    if frame_alerts:
+                        latest_safety_alerts = frame_alerts
+
+                    # Annotate Machine Safety Violations (danger zone, worker red highlight, line)
+                    annotated = self.safety_evaluator.annotate_frame(
+                        annotated, frame_alerts, frame_detections
+                    )
 
                     # Update max counts
                     for key in max_counts:
@@ -216,6 +237,32 @@ class VideoService:
                 tracking_data=tracking_summary,
             )
 
+            # Aggregate all safety incidents tracked throughout the video
+            all_incidents = []
+            for inc in list(self.safety_evaluator.active_incidents.values()) + self.safety_evaluator.resolved_incidents:
+                if inc.consecutive_frames >= self.safety_evaluator.config.persistence_frames:
+                    all_incidents.append({
+                        "incident_id": inc.incident_id,
+                        "worker_id": inc.worker_id,
+                        "worker_track_id": inc.worker_id.replace("Worker #", ""),
+                        "machine_id": inc.machine_id,
+                        "machine_track_id": inc.machine_id.split("#")[-1] if "#" in inc.machine_id else inc.machine_id,
+                        "machine_type": inc.machine_type,
+                        "severity": inc.severity,
+                        "status": "ACTIVE" if inc.is_active else "RESOLVED",
+                        "first_detected_at": inc.first_detected_at.isoformat(),
+                        "last_detected_at": inc.last_detected_at.isoformat(),
+                        "first_frame": inc.first_frame,
+                        "last_frame": inc.last_frame,
+                        "consecutive_frames": inc.consecutive_frames,
+                        "estimated_distance_m": inc.min_estimated_distance_m,
+                        "configured_threshold_m": inc.configured_threshold_m if inc.min_estimated_distance_m is not None else None,
+                        "proximity_method": inc.proximity_method,
+                        "proximity_label": inc.last_proximity_label,
+                        "is_acknowledged": inc.is_acknowledged,
+                        "acknowledged_at": inc.acknowledged_at.isoformat() if inc.acknowledged_at else None,
+                    })
+
             processing_time = round(time.time() - start_time, 2)
 
             return {
@@ -225,6 +272,9 @@ class VideoService:
                 "object_counts": final_counts,
                 "analytics": analytics,
                 "tracking": tracking_summary,
+                "safety_alerts": latest_safety_alerts,
+                "safety_alerts_count": len(all_incidents),
+                "safety_incidents": all_incidents,
                 "result_path": f"/results/videos/{final_result_filename}",
                 "thumbnail_path": f"/results/videos/{thumb_filename}" if has_thumb else None,
                 "video_info": {

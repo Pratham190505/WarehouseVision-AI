@@ -19,6 +19,7 @@ from app.database.mongodb import connect_db, close_db
 from app.routes.upload import router as upload_router
 from app.routes.analytics import router as analytics_router
 from app.routes.auth import router as auth_router
+from app.routes.safety import router as safety_router
 from app.services.auth_service import get_current_user_optional
 
 # Load environment variables
@@ -76,6 +77,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.include_router(auth_router)
 app.include_router(upload_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
+app.include_router(safety_router, prefix="/api")
 
 
 @app.get("/")

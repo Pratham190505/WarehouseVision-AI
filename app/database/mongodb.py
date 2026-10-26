@@ -41,6 +41,11 @@ def connect_db() -> Optional[Database]:
         _db.analyses.create_index("status")
         _db.sessions.create_index("session_id", unique=True)
         _db.sessions.create_index("expires_at", expireAfterSeconds=0)
+        _db.safety_events.create_index("event_id", unique=True)
+        _db.safety_events.create_index("user_id")
+        _db.safety_events.create_index("analysis_id")
+        _db.safety_events.create_index("status")
+        _db.safety_events.create_index("created_at")
 
         return _db
     except Exception as e:

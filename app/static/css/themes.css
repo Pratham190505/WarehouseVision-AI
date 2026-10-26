@@ -55,6 +55,16 @@
     --info: #06B6D4;
     --info-light: #ECFEFF;
 
+    /* Machine Proximity Safety Tokens */
+    --danger-alert-bg: #FEF2F2;
+    --danger-alert-border: #EF4444;
+    --danger-alert-text: #991B1B;
+    --danger-alert-title: #7F1D1D;
+    --danger-alert-glow: rgba(239, 68, 68, 0.25);
+    --danger-alert-badge: #FEE2E2;
+    --danger-alert-badge-text: #B91C1C;
+    --safety-zone-card-bg: #FFFFFF;
+
     /* Chart Colors */
     --chart-1: #4F6AFF;
     --chart-2: #10B981;
@@ -168,6 +178,16 @@
     --warning-light: #2A1F06;
     --danger-light: #2A0F0F;
     --info-light: #0A2328;
+
+    /* Machine Proximity Safety Tokens (Dark) */
+    --danger-alert-bg: #220B0B;
+    --danger-alert-border: #EF4444;
+    --danger-alert-text: #FCA5A5;
+    --danger-alert-title: #FEE2E2;
+    --danger-alert-glow: rgba(239, 68, 68, 0.35);
+    --danger-alert-badge: #450A0A;
+    --danger-alert-badge-text: #FCA5A5;
+    --safety-zone-card-bg: #161B26;
 
     --chart-grid: rgba(255, 255, 255, 0.06);
     --chart-text: #94A3B8;

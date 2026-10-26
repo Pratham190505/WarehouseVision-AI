@@ -26,9 +26,14 @@
             </div>
 
             <nav class="sidebar-nav">
-                <button class="nav-item active" data-section="sectionDashboard" title="Dashboard">
+                <button class="nav-item" data-section="sectionDashboard" title="Dashboard">
                     📊
                     <span class="nav-tooltip">Dashboard</span>
+                </button>
+                <button class="nav-item" data-section="sectionSafety" id="navSafetyBtn" title="Machine Safety" style="position:relative;">
+                    ⚠️
+                    <span class="nav-tooltip">Machine Safety</span>
+                    <span class="nav-alert-badge" id="navAlertBadge"></span>
                 </button>
                 <button class="nav-item" data-section="sectionAnalytics" title="Analytics">
                     📈
@@ -91,6 +96,9 @@
 
             <!-- Content -->
             <div class="content">
+
+                <!-- ===== Active Machine Proximity Safety Alerts Banner ===== -->
+                <div id="activeSafetyAlertsBanner" class="safety-alerts-container"></div>
 
                 <!-- ===== KPI Section ===== -->
                 <section id="sectionDashboard">
@@ -324,6 +332,106 @@
                                             <div class="history-empty">
                                                 <div class="empty-icon">📋</div>
                                                 <div>No analysis history yet. Upload and analyze media to get started.</div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== Machine Safety Section ===== -->
+                <section id="sectionSafety" class="safety-section">
+                    <div class="section-header">
+                        <div>
+                            <h2 class="section-title" style="display:flex;align-items:center;gap:10px;">
+                                <span>⚠️</span>
+                                <span>Machine Proximity Safety Monitoring</span>
+                            </h2>
+                            <p class="section-subtitle">Real-time danger zone tracking around forklifts and warehouse machinery</p>
+                        </div>
+                    </div>
+
+                    <!-- Safety Assistance Disclaimer Banner -->
+                    <div class="safety-disclaimer">
+                        <span style="font-size:22px;line-height:1;">🛡️</span>
+                        <div>
+                            <strong>Safety Advisory & Prototype Disclaimer:</strong>
+                            WarehouseVision proximity detection is an operational assistance tool. Distances are estimated geometrically or through image-space perimeter bounds and must not replace industrial guarding, certified lockout protocols, or designated pedestrian aisles.
+                        </div>
+                    </div>
+
+                    <!-- Safety KPIs -->
+                    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: var(--space-lg);">
+                        <div class="kpi-card" style="border-left: 4px solid var(--danger);">
+                            <div class="kpi-header">
+                                <div class="kpi-icon" style="background:var(--danger-alert-badge);color:var(--danger);">🚨</div>
+                                <span class="kpi-label">Active Danger Alerts</span>
+                            </div>
+                            <div class="kpi-value" id="kpiSafetyActive" style="color:var(--danger);">0</div>
+                            <div class="kpi-meta" id="kpiSafetyActiveMeta">No active breaches</div>
+                        </div>
+
+                        <div class="kpi-card" style="border-left: 4px solid var(--warning);">
+                            <div class="kpi-header">
+                                <div class="kpi-icon" style="background:var(--warning-light);color:var(--warning);">⚡</div>
+                                <span class="kpi-label">Total Safety Incidents</span>
+                            </div>
+                            <div class="kpi-value" id="kpiSafetyTotal">0</div>
+                            <div class="kpi-meta">Recorded across analyses</div>
+                        </div>
+
+                        <div class="kpi-card" style="border-left: 4px solid var(--success);">
+                            <div class="kpi-header">
+                                <div class="kpi-icon" style="background:var(--success-light);color:var(--success);">✅</div>
+                                <span class="kpi-label">Resolved Incidents</span>
+                            </div>
+                            <div class="kpi-value" id="kpiSafetyResolved">0</div>
+                            <div class="kpi-meta">Worker exited danger zone</div>
+                        </div>
+
+                        <div class="kpi-card" style="border-left: 4px solid var(--primary);">
+                            <div class="kpi-header">
+                                <div class="kpi-icon" style="background:var(--primary-light);color:var(--primary);">📐</div>
+                                <span class="kpi-label">Proximity Method</span>
+                            </div>
+                            <div class="kpi-value" id="kpiSafetyMode" style="font-size:1.15rem;padding-top:4px;">Image-Space</div>
+                            <div class="kpi-meta" id="kpiSafetyModeMeta">Perimeter safety zone</div>
+                        </div>
+                    </div>
+
+                    <!-- Safety Events Table -->
+                    <div class="history-card">
+                        <div class="history-header" style="display:flex;align-items:center;justify-content:space-between;">
+                            <h3 class="history-title" style="display:flex;align-items:center;gap:8px;">
+                                <span>📋</span>
+                                <span>Safety Proximity Incident Log</span>
+                            </h3>
+                            <button class="btn btn-secondary" id="refreshSafetyBtn" style="padding:6px 14px;font-size:12px;">
+                                🔄 Refresh Alerts
+                            </button>
+                        </div>
+                        <div class="history-table-wrapper">
+                            <table class="history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Machine</th>
+                                        <th>Worker</th>
+                                        <th>Proximity / Zone</th>
+                                        <th>Severity</th>
+                                        <th>Status</th>
+                                        <th>Ack State</th>
+                                        <th>Detected Time</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="safetyEventsBody">
+                                    <tr>
+                                        <td colspan="8">
+                                            <div class="history-empty">
+                                                <div class="empty-icon">🛡️</div>
+                                                <div>No safety incidents recorded yet. Analyze media to monitor machine proximity.</div>
                                             </div>
                                         </td>
                                     </tr>

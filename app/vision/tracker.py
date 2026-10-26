@@ -88,6 +88,7 @@ class WarehouseTracker:
         tracking_ids: Dict[str, List[int]] = {
             "worker": [], "forklift": [], "box": [], "pallet": []
         }
+        detections: List[Dict[str, Any]] = []
 
         for result in results:
             if result.boxes is None:
@@ -114,6 +115,14 @@ class WarehouseTracker:
                 count_key = warehouse_class + "s" if warehouse_class != "box" else "boxes"
                 counts[count_key] = counts.get(count_key, 0) + 1
 
+                detections.append({
+                    "class": warehouse_class,
+                    "confidence": round(conf, 3),
+                    "bbox": [x1, y1, x2, y2],
+                    "center": [(x1 + x2) // 2, (y1 + y2) // 2],
+                    "track_id": track_id,
+                })
+
                 # Draw annotation
                 info = WAREHOUSE_LABELS.get(warehouse_class, {"color": (200, 200, 200)})
                 color = info["color"]
@@ -134,6 +143,7 @@ class WarehouseTracker:
             "frame": frame_idx,
             "counts": counts,
             "tracking_ids": {k: v for k, v in tracking_ids.items()},
+            "detections": detections,
         }
         self.frame_data.append(frame_stats)
         self.processed_frames += 1
