@@ -97,6 +97,7 @@ async def root_redirect(request: Request):
 @app.get("/analysis")
 @app.get("/safety")
 @app.get("/box-counting")
+@app.get("/settings")
 async def dashboard_view(request: Request):
     """Serve the shared, authenticated application shell for each main view."""
     user = get_current_user_optional(request)
@@ -105,7 +106,16 @@ async def dashboard_view(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"user": user},
+        context={
+            "user": user,
+            "active_view": {
+                "/dashboard": "dashboard",
+                "/analysis": "analysis",
+                "/safety": "safety",
+                "/box-counting": "box-counting",
+                "/settings": "settings",
+            }.get(request.url.path, "dashboard"),
+        },
     )
 
 

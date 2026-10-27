@@ -8,7 +8,7 @@
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/static/css/themes.css?v=1.2">
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.4">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.6">
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -26,10 +26,11 @@
             </a>
             <button class="mobile-nav-toggle" id="mobileNavToggle" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="primaryNavigation">&#9776;</button>
             <nav class="primary-navigation" id="primaryNavigation" aria-label="Primary navigation">
-                <a class="nav-link" href="/dashboard" data-route="/dashboard">Dashboard</a>
-                <a class="nav-link" href="/analysis" data-route="/analysis">Analysis</a>
-                <a class="nav-link" href="/safety" data-route="/safety">Safety<span class="nav-alert-badge" id="navAlertBadge"></span></a>
-                <a class="nav-link" href="/box-counting" data-route="/box-counting">Box Counting</a>
+                <a class="nav-link{% if active_view == 'dashboard' %} active{% endif %}" href="/dashboard" data-route="/dashboard" {% if active_view == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+                <a class="nav-link{% if active_view == 'analysis' %} active{% endif %}" href="/analysis" data-route="/analysis" {% if active_view == 'analysis' %}aria-current="page"{% endif %}>Analysis</a>
+                <a class="nav-link{% if active_view == 'safety' %} active{% endif %}" href="/safety" data-route="/safety" {% if active_view == 'safety' %}aria-current="page"{% endif %}>Safety<span class="nav-alert-badge" id="navAlertBadge"></span></a>
+                <a class="nav-link{% if active_view == 'box-counting' %} active{% endif %}" href="/box-counting" data-route="/box-counting" {% if active_view == 'box-counting' %}aria-current="page"{% endif %}>Box Counting</a>
+                <a class="nav-link settings-nav-link{% if active_view == 'settings' %} active{% endif %}" href="/settings" data-route="/settings" title="Settings" aria-label="Settings" {% if active_view == 'settings' %}aria-current="page"{% endif %}>Settings</a>
             </nav>
             <div class="header-right">
                 <button class="header-icon-btn" type="button" title="Notifications" aria-label="Notifications">&#128276;<span class="badge"></span></button>
@@ -49,10 +50,10 @@
             <div class="content">
 
                 <!-- ===== Active Machine Proximity Safety Alerts Banner ===== -->
-                <div id="activeSafetyAlertsBanner" class="safety-alerts-container" data-view="safety"></div>
+                <div id="activeSafetyAlertsBanner" class="safety-alerts-container" data-view="safety" {% if active_view != 'safety' %}hidden{% endif %}></div>
 
                 <!-- ===== KPI Section ===== -->
-                <section id="sectionDashboard" data-view="dashboard">
+                <section id="sectionDashboard" data-view="dashboard" {% if active_view != 'dashboard' %}hidden{% endif %}>
                     <div class="section-header">
                         <div>
                             <h1 class="section-title">Warehouse Overview</h1>
@@ -109,7 +110,7 @@
                 </section>
 
                 <!-- ===== Charts Section ===== -->
-                <section id="sectionAnalytics" data-view="dashboard">
+                <section id="sectionAnalytics" data-view="dashboard" {% if active_view != 'dashboard' %}hidden{% endif %}>
                     <div class="charts-grid">
                         <div class="chart-card">
                             <div class="chart-header">
@@ -187,7 +188,7 @@
                 </section>
 
                 <!-- ===== Upload Section ===== -->
-                <section id="sectionUpload" class="upload-section" data-view="analysis">
+                <section id="sectionUpload" class="upload-section" data-view="analysis" {% if active_view != 'analysis' %}hidden{% endif %}>
                     <div class="upload-card">
                         <div class="upload-header">
                             <h2 class="upload-title">Analyze Warehouse Media</h2>
@@ -229,7 +230,7 @@
                     </div>
                 </section>
 
-                <section id="sectionBoxTracking" class="box-tracking-section" data-view="box-counting">
+                <section id="sectionBoxTracking" class="box-tracking-section" data-view="box-counting" {% if active_view != 'box-counting' %}hidden{% endif %}>
                     <div class="upload-card">
                         <div class="upload-header">
                             <h2 class="upload-title">Box Tracking and Counting</h2>
@@ -247,7 +248,7 @@
                 </section>
 
                 <!-- ===== Processing Status ===== -->
-                <div class="processing-status" id="processingStatus" data-view="analysis">
+                <div class="processing-status" id="processingStatus" data-view="analysis" {% if active_view != 'analysis' %}hidden{% endif %}>
                     <div class="status-card">
                         <div class="status-header">
                             <span class="status-icon" id="statusIcon">⏳</span>
@@ -263,7 +264,7 @@
                 </div>
 
                 <!-- ===== Detection Result ===== -->
-                <section class="result-section" id="resultSection" data-view="analysis">
+                <section class="result-section" id="resultSection" data-view="analysis" {% if active_view != 'analysis' %}hidden{% endif %}>
                     <div class="result-card">
                         <div class="result-header">
                             <h2 class="result-title" id="resultTitle">Detection Result</h2>
@@ -274,7 +275,7 @@
                 </section>
 
                 <!-- ===== History ===== -->
-                <section id="sectionHistory" class="history-section" data-view="analysis">
+                <section id="sectionHistory" class="history-section" data-view="analysis" {% if active_view != 'analysis' %}hidden{% endif %}>
                     <div class="history-card">
                         <div class="history-header">
                             <h2 class="history-title">Analysis History</h2>
@@ -310,7 +311,7 @@
                 </section>
 
                 <!-- ===== Machine Safety Section ===== -->
-                <section id="sectionSafety" class="safety-section" data-view="safety">
+                <section id="sectionSafety" class="safety-section" data-view="safety" {% if active_view != 'safety' %}hidden{% endif %}>
                     <div class="section-header">
                         <div>
                             <h2 class="section-title" style="display:flex;align-items:center;gap:10px;">
@@ -409,6 +410,83 @@
                     </div>
                 </section>
 
+                <section id="sectionSettings" class="settings-page" data-view="settings" {% if active_view != 'settings' %}hidden{% endif %}>
+                    <div class="section-header">
+                        <div>
+                            <h1 class="section-title">Settings</h1>
+                            <p class="section-subtitle">Manage your account details, appearance, and session.</p>
+                        </div>
+                    </div>
+                    <div id="settingsFormMessage" class="settings-message" role="status" aria-live="polite" hidden></div>
+                    <div class="settings-grid">
+                        <section class="history-card settings-card settings-account-card" aria-labelledby="settingsAccountHeading">
+                            <div class="settings-card-heading">
+                                <div>
+                                    <h2 id="settingsAccountHeading">Account settings</h2>
+                                    <p>Edit the profile information associated with your account.</p>
+                                </div>
+                                <span id="settingsRoleBadge" class="status-badge completed" style="text-transform:capitalize;">{{ user.role if user and user.role else 'user' }}</span>
+                            </div>
+                            <div class="settings-profile-summary">
+                                <div class="avatar" id="settingsAvatarPreview">{{ user.name[:2].upper() if user and user.name else 'U' }}</div>
+                                <div>
+                                    <strong id="settingsNamePreview">{{ user.name if user and user.name else '' }}</strong>
+                                    <span id="settingsEmailPreview">{{ user.email if user and user.email else '' }}</span>
+                                </div>
+                            </div>
+                            <form id="settingsForm" class="settings-form" novalidate>
+                                <div class="settings-fields-grid">
+                                    <div class="form-group">
+                                        <label for="settingsNameInput">Display name <span aria-hidden="true">*</span></label>
+                                        <input type="text" id="settingsNameInput" name="name" required minlength="2" maxlength="100" autocomplete="name" value="{{ user.name if user and user.name else '' }}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="settingsDeptInput">Department</label>
+                                        <input type="text" id="settingsDeptInput" name="department" maxlength="100" value="{{ user.department if user and user.department else '' }}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="settingsOrgInput">Organization / facility</label>
+                                        <input type="text" id="settingsOrgInput" name="organization" maxlength="150" value="{{ user.organization if user and user.organization else '' }}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="settingsEmailInput">Email address</label>
+                                        <input type="email" id="settingsEmailInput" readonly aria-describedby="settingsEmailHelp" value="{{ user.email if user and user.email else '' }}">
+                                        <small id="settingsEmailHelp">Email is the account login ID and cannot be changed here.</small>
+                                    </div>
+                                </div>
+                                <div class="settings-actions">
+                                    <button type="button" class="btn btn-secondary" id="settingsCancelBtn">Cancel</button>
+                                    <button type="submit" class="btn btn-primary" id="settingsSaveBtn"><span id="settingsSaveText">Save Changes</span></button>
+                                </div>
+                            </form>
+                        </section>
+                        <section class="history-card settings-card" aria-labelledby="settingsAppearanceHeading">
+                            <div class="settings-card-heading">
+                                <div>
+                                    <h2 id="settingsAppearanceHeading">Appearance</h2>
+                                    <p>Choose the theme used across WarehouseVision AI.</p>
+                                </div>
+                            </div>
+                            <div class="settings-theme-row">
+                                <span>Current theme</span>
+                                <strong id="settingsThemeValue">Light</strong>
+                                <button class="header-icon-btn theme-toggle-btn" type="button" title="Toggle light and dark theme" aria-label="Toggle light and dark theme">&#127769;</button>
+                            </div>
+                            <p class="settings-help">Your theme choice is saved in this browser and applies across the application.</p>
+                        </section>
+                        <section class="history-card settings-card" aria-labelledby="settingsSecurityHeading">
+                            <div class="settings-card-heading">
+                                <div>
+                                    <h2 id="settingsSecurityHeading">Security</h2>
+                                    <p>Review the account session options currently available.</p>
+                                </div>
+                            </div>
+                            <p class="settings-security-copy">You are signed in as <strong id="settingsSecurityEmail">{{ user.email if user and user.email else '' }}</strong>.</p>
+                            <p class="settings-help">Use the Logout control in the navbar to end this session. Password changes are not supported by the current account system.</p>
+                        </section>
+                    </div>
+                </section>
+
             </div> <!-- end .content -->
         </main>
     </div> <!-- end .app-layout -->
@@ -424,117 +502,12 @@
         </div>
     </div>
 
-    <!-- ===== Settings Modal ===== -->
-    <div class="modal-overlay" id="settingsModalOverlay">
-        <div class="modal" style="max-width: 520px;">
-            <div class="modal-header">
-                <h3 class="modal-title" style="display:flex;align-items:center;gap:8px;">
-                    <span>⚙️</span>
-                    <span>Account & Profile Settings</span>
-                </h3>
-                <button class="modal-close" id="settingsModalClose">✕</button>
-            </div>
-            <div class="modal-body">
-                <form id="settingsForm" style="display:flex;flex-direction:column;gap:18px;">
-                    <!-- User Preview Card -->
-                    <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-md);">
-                        <div class="avatar" id="settingsAvatarPreview" style="width:48px;height:48px;font-size:18px;font-weight:700;">{{ user.name[:2].upper() if user and user.name else 'VO' }}</div>
-                        <div style="overflow:hidden;">
-                            <div id="settingsNamePreview" style="font-weight:700;font-size:15px;color:var(--text-primary);">{{ user.name if user and user.name else 'Warehouse User' }}</div>
-                            <div id="settingsEmailPreview" style="font-size:12px;color:var(--text-tertiary);">{{ user.email if user and user.email else '' }}</div>
-                        </div>
-                    </div>
-
-                    <!-- Full Name Field -->
-                    <div class="form-group" style="margin:0;">
-                        <label for="settingsNameInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
-                            Full Name <span style="color:var(--danger)">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            id="settingsNameInput"
-                            name="name"
-                            required
-                            minlength="2"
-                            maxlength="60"
-                            placeholder="Enter your name"
-                            value="{{ user.name if user and user.name else '' }}"
-                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font-size:14px;outline:none;box-sizing:border-box;"
-                        />
-                    </div>
-
-                    <!-- Job Title / Department -->
-                    <div class="form-group" style="margin:0;">
-                        <label for="settingsDeptInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
-                            Job Title / Department
-                        </label>
-                        <input
-                            type="text"
-                            id="settingsDeptInput"
-                            name="department"
-                            maxlength="80"
-                            placeholder="e.g. Warehouse Operations Lead"
-                            value="{{ user.department if user and user.department else '' }}"
-                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font-size:14px;outline:none;box-sizing:border-box;"
-                        />
-                    </div>
-
-                    <!-- Organization / Warehouse Facility -->
-                    <div class="form-group" style="margin:0;">
-                        <label for="settingsOrgInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
-                            Warehouse / Facility Name
-                        </label>
-                        <input
-                            type="text"
-                            id="settingsOrgInput"
-                            name="organization"
-                            maxlength="100"
-                            placeholder="e.g. Distribution Center Alpha"
-                            value="{{ user.organization if user and user.organization else '' }}"
-                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-surface);color:var(--text-primary);font-size:14px;outline:none;box-sizing:border-box;"
-                        />
-                    </div>
-
-                    <!-- Email (Read-Only) -->
-                    <div class="form-group" style="margin:0;">
-                        <label for="settingsEmailInput" style="display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">
-                            <span>Email Address</span>
-                            <span style="font-size:11px;color:var(--text-tertiary);font-weight:normal;">🔒 Read-only login ID</span>
-                        </label>
-                        <input
-                            type="email"
-                            id="settingsEmailInput"
-                            disabled
-                            value="{{ user.email if user and user.email else '' }}"
-                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text-tertiary);font-size:14px;cursor:not-allowed;box-sizing:border-box;"
-                        />
-                    </div>
-
-                    <!-- Account Role -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-input);border-radius:var(--radius-sm);font-size:13px;">
-                        <span style="color:var(--text-secondary);">Account Role</span>
-                        <span id="settingsRoleBadge" class="status-badge completed" style="text-transform:capitalize;">{{ user.role if user and user.role else 'user' }}</span>
-                    </div>
-
-                    <!-- Modal Actions -->
-                    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px;">
-                        <button type="button" class="view-btn" id="settingsCancelBtn" style="padding:9px 18px;">Cancel</button>
-                        <button type="submit" class="btn-primary" id="settingsSaveBtn" style="padding:9px 22px;display:inline-flex;align-items:center;gap:6px;">
-                            <span>💾</span>
-                            <span id="settingsSaveText">Save Changes</span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <!-- ===== Toast Container ===== -->
     <div class="toast-container" id="toastContainer"></div>
 
     <!-- Scripts -->
     <script src="/static/js/theme.js?v=1.3"></script>
     <script src="/static/js/charts.js?v=1.3"></script>
-    <script src="/static/js/dashboard.js?v=1.4"></script>
+    <script src="/static/js/dashboard.js?v=1.7"></script>
 </body>
 </html>

@@ -338,6 +338,10 @@ config = SafetyConfig(
 | `GET` | `/login` | User login view |
 | `GET` | `/signup` | User registration view |
 | `GET` | `/dashboard` | Protected warehouse analytics dashboard (requires login) |
+| `GET` | `/analysis` | Protected image/video analysis and history view |
+| `GET` | `/safety` | Protected machine safety monitoring view |
+| `GET` | `/box-counting` | Protected unique box tracking view |
+| `GET` | `/settings` | Protected account, appearance, and session settings |
 | `GET` | `/` | Root redirect (redirects to `/dashboard` or `/login`) |
 | `POST` | `/api/auth/signup` | Register new user account (bcrypt password hashing) |
 | `POST` | `/api/auth/login` | Authenticate user & set secure session cookie |

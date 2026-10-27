@@ -247,6 +247,7 @@ class TestUserProfileSettings:
         assert resp.status_code == 400
         assert "at least 2 characters" in resp.json()["detail"]
 
+
     def test_profile_update_success_and_reflected_on_dashboard(self):
         """Profile update successfully modifies name, organization, department and is reflected on /dashboard."""
         auth_client = TestClient(app, follow_redirects=False)
@@ -279,3 +280,8 @@ class TestUserProfileSettings:
         dash_resp = auth_client.get("/dashboard")
         assert dash_resp.status_code == 200
         assert "Pratham Vision Lead" in dash_resp.text
+
+        settings_resp = auth_client.get("/settings")
+        assert settings_resp.status_code == 200
+        assert "Pratham Vision Lead" in settings_resp.text
+        assert "Global Warehouse Hub Alpha" in settings_resp.text

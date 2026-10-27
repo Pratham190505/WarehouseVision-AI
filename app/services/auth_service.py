@@ -287,22 +287,35 @@ def update_user_profile(user_id: str, updates: Dict[str, Any]) -> Dict[str, Any]
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User ID is required.",
         )
+    if not isinstance(updates, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Profile updates must be an object.")
 
     clean_updates: Dict[str, Any] = {}
     if "name" in updates:
-        name = (updates["name"] or "").strip()
+        raw_name = updates["name"]
+        if not isinstance(raw_name, str):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name must be text.")
+        name = raw_name.strip()
         if not name or len(name) < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Name must be at least 2 characters.",
             )
+        if len(name) > 100:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name must be 100 characters or fewer.")
         clean_updates["name"] = name
 
     if "organization" in updates:
-        clean_updates["organization"] = (updates["organization"] or "").strip()
+        organization = updates["organization"] or ""
+        if not isinstance(organization, str) or len(organization.strip()) > 150:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization must be 150 characters or fewer.")
+        clean_updates["organization"] = organization.strip()
 
     if "department" in updates:
-        clean_updates["department"] = (updates["department"] or "").strip()
+        department = updates["department"] or ""
+        if not isinstance(department, str) or len(department.strip()) > 100:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department must be 100 characters or fewer.")
+        clean_updates["department"] = department.strip()
 
     if not clean_updates:
         raise HTTPException(

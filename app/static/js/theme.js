@@ -33,6 +33,7 @@ const ThemeManager = (() => {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem(STORAGE_KEY, theme);
         updateToggleIcons(theme);
+        window.dispatchEvent(new CustomEvent('warehousevision-theme-change', { detail: { theme } }));
         if (updateCharts && typeof ChartsManager !== 'undefined') {
             ChartsManager.updateTheme();
         }

@@ -93,8 +93,6 @@ const Dashboard = (() => {
 
         // Settings Elements
         els.headerUserProfile = document.getElementById('headerUserProfile');
-        els.settingsModalOverlay = document.getElementById('settingsModalOverlay');
-        els.settingsModalClose = document.getElementById('settingsModalClose');
         els.settingsCancelBtn = document.getElementById('settingsCancelBtn');
         els.settingsForm = document.getElementById('settingsForm');
         els.settingsNameInput = document.getElementById('settingsNameInput');
@@ -107,6 +105,9 @@ const Dashboard = (() => {
         els.settingsEmailPreview = document.getElementById('settingsEmailPreview');
         els.settingsSaveBtn = document.getElementById('settingsSaveBtn');
         els.settingsSaveText = document.getElementById('settingsSaveText');
+        els.settingsFormMessage = document.getElementById('settingsFormMessage');
+        els.settingsThemeValue = document.getElementById('settingsThemeValue');
+        els.settingsSecurityEmail = document.getElementById('settingsSecurityEmail');
 
         // Safety Elements
         els.activeSafetyAlertsBanner = document.getElementById('activeSafetyAlertsBanner');
@@ -168,41 +169,24 @@ const Dashboard = (() => {
         window.addEventListener('popstate', () => renderRoute(window.location.pathname));
         renderRoute(window.location.pathname);
 
-        // Settings modal triggers
+        // Settings page and profile navigation
         if (els.headerUserProfile) {
-            els.headerUserProfile.addEventListener('click', openSettingsModal);
+            els.headerUserProfile.addEventListener('click', () => navigateToRoute('/settings'));
             els.headerUserProfile.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    openSettingsModal();
+                    navigateToRoute('/settings');
                 }
             });
         }
-        if (els.settingsModalClose) {
-            els.settingsModalClose.addEventListener('click', closeSettingsModal);
-        }
-        if (els.settingsCancelBtn) {
-            els.settingsCancelBtn.addEventListener('click', closeSettingsModal);
-        }
-        if (els.settingsModalOverlay) {
-            els.settingsModalOverlay.addEventListener('click', (e) => {
-                if (e.target === els.settingsModalOverlay) closeSettingsModal();
-            });
-        }
-        if (els.settingsNameInput) {
-            els.settingsNameInput.addEventListener('input', (e) => {
-                const val = e.target.value.trim();
-                if (els.settingsNamePreview) {
-                    els.settingsNamePreview.textContent = val || 'Warehouse User';
-                }
-                if (els.settingsAvatarPreview) {
-                    els.settingsAvatarPreview.textContent = (val || 'VO').slice(0, 2).toUpperCase();
-                }
-            });
-        }
-        if (els.settingsForm) {
-            els.settingsForm.addEventListener('submit', handleSaveSettings);
-        }
+        els.settingsCancelBtn?.addEventListener('click', () => {
+            if (currentProfileUser) populateSettingsFields(currentProfileUser);
+            clearSettingsMessage();
+        });
+        els.settingsForm?.addEventListener('submit', handleSaveSettings);
+        els.settingsForm?.addEventListener('input', clearSettingsMessage);
+        window.addEventListener('warehousevision-theme-change', renderSettingsTheme);
+        renderSettingsTheme();
 
         // Theme toggles
         document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
@@ -229,7 +213,6 @@ const Dashboard = (() => {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeModal();
-                closeSettingsModal();
                 els.primaryNavigation?.classList.remove('open');
                 els.mobileNavToggle?.setAttribute('aria-expanded', 'false');
             }
@@ -239,25 +222,26 @@ const Dashboard = (() => {
     // ===== Settings & Profile Logic =====
     let currentProfileUser = null;
 
-    function openSettingsModal() {
-        if (!els.settingsModalOverlay) return;
-        if (currentProfileUser) {
-            populateSettingsFields(currentProfileUser);
-        }
-        els.settingsModalOverlay.classList.add('visible');
-        document.body.style.overflow = 'hidden';
-        if (els.settingsNameInput) {
-            setTimeout(() => {
-                els.settingsNameInput.focus();
-                els.settingsNameInput.select();
-            }, 100);
-        }
+    function renderSettingsTheme() {
+        if (!els.settingsThemeValue || typeof ThemeManager === 'undefined') return;
+        const theme = ThemeManager.getTheme();
+        els.settingsThemeValue.textContent = theme === 'dark' ? 'Dark' : 'Light';
     }
 
-    function closeSettingsModal() {
-        if (!els.settingsModalOverlay) return;
-        els.settingsModalOverlay.classList.remove('visible');
-        document.body.style.overflow = '';
+    function showSettingsMessage(message, type = 'success') {
+        if (!els.settingsFormMessage) return;
+        els.settingsFormMessage.textContent = message;
+        els.settingsFormMessage.className = `settings-message settings-message-${type}`;
+        els.settingsFormMessage.hidden = false;
+        els.settingsFormMessage.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    }
+
+    function clearSettingsMessage() {
+        if (!els.settingsFormMessage) return;
+        els.settingsFormMessage.textContent = '';
+        els.settingsFormMessage.hidden = true;
+        els.settingsFormMessage.className = 'settings-message';
+        els.settingsFormMessage.setAttribute('role', 'status');
     }
 
     function populateSettingsFields(user) {
@@ -268,6 +252,7 @@ const Dashboard = (() => {
         if (els.settingsOrgInput) els.settingsOrgInput.value = user.organization || '';
         if (els.settingsEmailInput) els.settingsEmailInput.value = user.email || '';
         if (els.settingsRoleBadge) els.settingsRoleBadge.textContent = user.role || 'user';
+        if (els.settingsSecurityEmail) els.settingsSecurityEmail.textContent = user.email || '';
         if (els.settingsNamePreview) els.settingsNamePreview.textContent = user.name || 'Warehouse User';
         if (els.settingsEmailPreview) els.settingsEmailPreview.textContent = user.email || '';
         if (els.settingsAvatarPreview) els.settingsAvatarPreview.textContent = (user.name || 'VO').slice(0, 2).toUpperCase();
@@ -279,8 +264,11 @@ const Dashboard = (() => {
         const department = (els.settingsDeptInput?.value || '').trim();
         const organization = (els.settingsOrgInput?.value || '').trim();
 
-        if (!name || name.length < 2) {
-            showToast('Name must be at least 2 characters.', 'error');
+        clearSettingsMessage();
+        if (!name || name.length < 2 || name.length > 100) {
+            const message = 'Display name must contain between 2 and 100 characters.';
+            showSettingsMessage(message, 'error');
+            showToast(message, 'error');
             els.settingsNameInput?.focus();
             return;
         }
@@ -314,11 +302,13 @@ const Dashboard = (() => {
             }
 
             populateSettingsFields(updated);
+            showSettingsMessage('Profile changes saved successfully.', 'success');
             showToast('Profile updated successfully!', 'success');
-            closeSettingsModal();
         } catch (err) {
             console.error('Settings save error:', err);
-            showToast(err.message || 'Could not update profile', 'error');
+            const message = err.message || 'Could not update profile.';
+            showSettingsMessage(message, 'error');
+            showToast(message, 'error');
         } finally {
             if (els.settingsSaveBtn) els.settingsSaveBtn.disabled = false;
             if (els.settingsSaveText) els.settingsSaveText.textContent = originalBtnText;
@@ -996,6 +986,7 @@ const Dashboard = (() => {
         '/analysis': 'analysis',
         '/safety': 'safety',
         '/box-counting': 'box-counting',
+        '/settings': 'settings',
     };
     const viewRoutes = Object.fromEntries(Object.entries(routeViews).map(([route, view]) => [view, route]));
 
@@ -1368,8 +1359,6 @@ const Dashboard = (() => {
         loadDashboardData,
         scrollToSection,
         closeModal,
-        openSettingsModal,
-        closeSettingsModal,
         loadSafetyData,
         handleAcknowledgeAlert,
     };
