@@ -56,6 +56,8 @@ class AnalysisRecord(BaseModel):
 
     safety_alerts_count: int = 0
     safety_incidents: List[Dict[str, Any]] = Field(default_factory=list)
+    box_tracking: Optional[Dict[str, Any]] = None
+    unique_boxes_tracked: Optional[int] = None
 
     class Config:
         json_encoders = {

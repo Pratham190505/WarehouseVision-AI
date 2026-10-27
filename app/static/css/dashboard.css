@@ -477,6 +477,26 @@ a:hover { opacity: 0.85; }
     margin-bottom: var(--space-xl);
 }
 
+.box-tracking-section { margin-bottom: var(--space-xl); }
+.box-tracking-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
+.box-tracking-upload label { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.box-tracking-upload input { flex: 1 1 260px; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px; color: var(--text-primary); background: var(--bg-input); font: inherit; }
+.box-tracking-note { color: var(--text-secondary); font-size: var(--font-size-sm); margin: 14px 0; }
+.box-tracking-status { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.box-tracking-results { display: grid; gap: 18px; margin-top: 22px; }
+.box-count-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.box-count-summary > div { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-input); }
+.box-count-summary strong { color: var(--text-primary); font-size: 1.4rem; }
+.box-count-summary span { color: var(--text-secondary); font-size: var(--font-size-xs); }
+.box-count-summary .box-count-primary strong { font-size: 2.4rem; color: var(--success); }
+.box-tracking-list-title { margin: 0; color: var(--text-primary); }
+.box-confirmed-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.box-confirmed-list li { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-input); color: var(--text-primary); }
+.box-confirmed-list li span { color: var(--text-secondary); font-size: var(--font-size-xs); }
+.box-model-warning { padding: 12px; border-left: 3px solid var(--warning); background: var(--bg-input); }
+.box-output-video { background: #090D16; border-radius: var(--radius-md); overflow: hidden; }
+.box-output-video video { display: block; width: 100%; max-height: 600px; }
+
 .upload-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);

@@ -12,6 +12,7 @@ import time
 import uuid
 import logging
 import subprocess
+import threading
 from pathlib import Path
 from typing import Dict, Any
 
@@ -25,6 +26,7 @@ from app.vision.occupancy import OccupancyAnalyzer
 from app.vision.inventory import InventoryAnalyzer
 from app.vision.analytics import WarehouseAnalytics
 from app.vision.safety_zone import SafetyZoneEvaluator
+from app.vision.box_counting import BoxCountingEngine
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +45,18 @@ class VideoService:
         self.inventory_analyzer = InventoryAnalyzer()
         self.analytics_engine = WarehouseAnalytics()
         self.safety_evaluator = SafetyZoneEvaluator()
+        self._process_lock = threading.Lock()
 
     def process(self, video_path: str, result_dir: str,
-                analysis_id: str = None, frame_skip: int = FRAME_SKIP) -> Dict[str, Any]:
+                analysis_id: str = None, frame_skip: int = FRAME_SKIP,
+                box_tracking_config: Dict[str, Any] = None) -> Dict[str, Any]:
+        # This singleton owns mutable Ultralytics tracker and safety state.
+        with self._process_lock:
+            return self._process(video_path, result_dir, analysis_id, frame_skip, box_tracking_config)
+
+    def _process(self, video_path: str, result_dir: str,
+                 analysis_id: str = None, frame_skip: int = FRAME_SKIP,
+                 box_tracking_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Process a warehouse video through the full analysis pipeline.
 
@@ -63,6 +74,9 @@ class VideoService:
 
         cap = None
         writer = None
+        result_path = None
+        thumb_path = None
+        h264_path = None
 
         try:
             # Open video
@@ -75,6 +89,13 @@ class VideoService:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            if width <= 0 or height <= 0 or fps <= 0:
+                raise ValueError("Uploaded video has invalid frame dimensions or frame rate.")
+            if box_tracking_config is not None and not self.detector.is_ready():
+                raise ValueError("The configured YOLO object detector is unavailable.")
+            counting_engine = BoxCountingEngine(**(box_tracking_config or {})) if box_tracking_config is not None else None
+            processing_step = 1 if counting_engine else frame_skip
 
             # Reset tracker and safety evaluator
             self.tracker.reset()
@@ -90,6 +111,8 @@ class VideoService:
             result_path = os.path.join(result_dir, result_filename)
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(result_path, fourcc, fps, (width, height))
+            if not writer.isOpened():
+                raise ValueError("Could not create the processed video output. Check codec and output permissions.")
 
             # Aggregate counts across frames
             aggregate_counts = {"workers": 0, "forklifts": 0, "boxes": 0, "pallets": 0}
@@ -99,21 +122,53 @@ class VideoService:
             frame_idx = 0
             last_annotated = None
             latest_safety_alerts = []
+            untracked_box_detections = 0
 
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
 
-                if frame_idx % frame_skip == 0:
+                if frame_idx % processing_step == 0:
                     # Track objects
-                    annotated, frame_stats = self.tracker.track_frame(frame, frame_idx)
+                    annotated, frame_stats = self.tracker.track_frame(
+                        frame,
+                        frame_idx,
+                        confidence=float(os.getenv("BOX_TRACK_DETECTION_CONFIDENCE", "0.1")) if counting_engine else None,
+                        annotate_box_detections=not bool(counting_engine),
+                    )
 
                     # Get detections from tracker or fall back to detector
                     frame_detections = frame_stats.get("detections", [])
                     if not frame_detections and self.detector.is_ready():
                         det_result = self.detector.detect(frame)
                         frame_detections = det_result["detections"]
+
+                    if counting_engine:
+                        for detection in frame_detections:
+                            if detection.get("class") != "box":
+                                continue
+                            if detection.get("track_id") is None:
+                                counting_engine.note_untracked_detection()
+                                continue
+                            counting_engine.observe(
+                                detection["track_id"], detection.get("bbox", [0, 0, 0, 0]),
+                                detection.get("center", [0, 0]), detection.get("confidence", 0), frame_idx,
+                            )
+                        counting_engine.advance_frame(frame_idx)
+                        summary = counting_engine.summary(frame_idx)
+                        for track in counting_engine.visible_tracks(frame_idx):
+                            x1, y1, x2, y2 = track["bbox"]
+                            cv2.rectangle(annotated, (x1, y1), (x2, y2), (40, 220, 90), 3)
+                            label = f"{track['box_id']} {track['average_confidence']:.2f}"
+                            cv2.rectangle(annotated, (x1, max(0, y1 - 24)), (x1 + 180, y1), (40, 220, 90), -1)
+                            cv2.putText(annotated, label, (x1 + 4, max(16, y1 - 7)),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (15, 20, 25), 2)
+                        cv2.rectangle(annotated, (8, 8), (440, 88), (20, 25, 35), -1)
+                        cv2.putText(annotated, f"TOTAL UNIQUE BOXES: {summary['total_unique_boxes']}", (20, 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 255), 2)
+                        cv2.putText(annotated, f"CURRENTLY VISIBLE BOXES: {summary['currently_visible_boxes']}", (20, 70),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255, 220, 90), 2)
 
                     # Check zone violations
                     frame_counts = frame_stats.get("counts", {})
@@ -172,8 +227,7 @@ class VideoService:
             has_thumb = False
             if last_annotated is not None:
                 try:
-                    cv2.imwrite(thumb_path, last_annotated)
-                    has_thumb = True
+                    has_thumb = bool(cv2.imwrite(thumb_path, last_annotated))
                 except Exception as e:
                     logger.warning(f"Could not save video thumbnail: {e}")
 
@@ -209,6 +263,25 @@ class VideoService:
 
             # Get tracking summary
             tracking_summary = self.tracker.get_summary()
+            box_tracking_summary = counting_engine.summary(max(0, frame_idx - 1)) if counting_engine else None
+            if box_tracking_summary is not None:
+                box_tracking_summary["tracker_configuration"].update({
+                    "tracker": "bytetrack.yaml",
+                    "candidate_confidence": float(os.getenv("BOX_TRACK_DETECTION_CONFIDENCE", "0.1")),
+                })
+                tracking_summary["unique_boxes"] = box_tracking_summary["total_unique_boxes"]
+                max_counts["boxes"] = box_tracking_summary["total_unique_boxes"]
+            untracked_box_detections = counting_engine.untracked_detections if counting_engine else 0
+            box_model_mapping = {}
+            if counting_engine:
+                class_names = getattr(self.detector.model, "names", {})
+                for class_id, warehouse_label in self.detector.class_mapping.items():
+                    if warehouse_label != "box":
+                        continue
+                    source_name = class_names.get(class_id, str(class_id)) if isinstance(class_names, dict) else (
+                        class_names[class_id] if class_id < len(class_names) else str(class_id)
+                    )
+                    box_model_mapping[str(class_id)] = {"source_name": str(source_name), "warehouse_label": "box"}
 
             # Use max per-frame counts as the reported counts
             final_counts = max_counts
@@ -270,7 +343,7 @@ class VideoService:
 
             processing_time = round(time.time() - start_time, 2)
 
-            return {
+            result = {
                 "analysis_id": analysis_id,
                 "status": "completed",
                 "processing_time": processing_time,
@@ -294,10 +367,40 @@ class VideoService:
                 "occupancy": occupancy_result,
                 "inventory": inventory_result,
             }
+            if box_tracking_summary is not None:
+                result["box_tracking"] = {
+                    **box_tracking_summary,
+                    "tracker": "Ultralytics ByteTrack",
+                    "tracker_ids_are_session_scoped": True,
+                    "detector_box_mapping": box_model_mapping,
+                    "detection_model": self.detector.model_path,
+                    "box_detection_source": self.detector.box_detection_source,
+                    "untracked_box_detections": untracked_box_detections,
+                    "tracking_warning": (
+                        "Some box detections had no persistent tracker ID and were not counted."
+                        if untracked_box_detections else None
+                    ),
+                    "output_filename": final_result_filename,
+                    "thumbnail_filename": thumb_filename if has_thumb else None,
+                }
+                result["result_path"] = f"/api/box-tracking/{analysis_id}/result"
+                result["thumbnail_path"] = (
+                    f"/api/box-tracking/{analysis_id}/thumbnail" if has_thumb else None
+                )
+            return result
 
         except Exception as e:
             processing_time = round(time.time() - start_time, 2)
             logger.error(f"Video processing failed: {e}", exc_info=True)
+            if writer:
+                writer.release()
+                writer = None
+            for partial_path in (result_path, thumb_path, h264_path):
+                if partial_path and os.path.isfile(partial_path):
+                    try:
+                        os.remove(partial_path)
+                    except OSError as cleanup_error:
+                        logger.warning("Could not remove partial output %s: %s", partial_path, cleanup_error)
             return {
                 "analysis_id": analysis_id,
                 "status": "failed",

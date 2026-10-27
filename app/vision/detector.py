@@ -61,6 +61,9 @@ class WarehouseDetector:
         self.model_loaded = False
         self.confidence = confidence
         self.class_mapping = DEFAULT_CLASS_MAPPING.copy()
+        self.model_path = None
+        self.box_detection_source = "unavailable"
+        self.custom_model_loaded = False
 
         model_path = model_path or os.getenv("MODEL_PATH", "models/warehouse_model.pt")
 
@@ -75,17 +78,58 @@ class WarehouseDetector:
             if path.exists():
                 logger.info(f"Loading custom model from: {model_path}")
                 self.model = YOLO(str(path))
+                self.model_path = str(path)
+                self.custom_model_loaded = True
             else:
                 # Fall back to pretrained YOLOv8n
                 logger.info("Custom model not found. Using pretrained YOLOv8n.")
                 self.model = YOLO("yolov8n.pt")
+                self.model_path = "yolov8n.pt"
 
+            self._configure_box_classes()
             self.model_loaded = True
             logger.info("YOLO model loaded successfully.")
         except Exception as e:
             logger.error(f"Failed to load YOLO model: {e}")
             self.model = None
             self.model_loaded = False
+
+    def _configure_box_classes(self):
+        """Prefer an explicitly configured or model-labeled carton class."""
+        names = getattr(self.model, "names", {}) or {}
+        if isinstance(names, list):
+            names = dict(enumerate(names))
+
+        configured_ids = os.getenv("BOX_CLASS_IDS", "").strip()
+        if configured_ids:
+            try:
+                box_ids = {int(value.strip()) for value in configured_ids.split(",") if value.strip()}
+                if not box_ids or any(class_id not in names for class_id in box_ids):
+                    raise ValueError("BOX_CLASS_IDS contains a class ID not present in the configured model.")
+                source = "configured class IDs"
+            except ValueError as exc:
+                logger.warning("Ignoring invalid BOX_CLASS_IDS: %s", exc)
+                box_ids = set()
+                source = None
+            else:
+                source = "configured class IDs"
+        else:
+            box_ids = {
+                int(class_id) for class_id, label in names.items()
+                if str(label).strip().lower() in {"box", "cardboard box", "carton", "package"}
+                or ("cardboard" in str(label).strip().lower() and "box" in str(label).strip().lower())
+            }
+            source = "dedicated model class" if box_ids else None
+
+        if box_ids:
+            self.class_mapping = {class_id: label for class_id, label in self.class_mapping.items() if label != "box"}
+            self.class_mapping.update({class_id: "box" for class_id in box_ids})
+            self.box_detection_source = source
+        elif self.custom_model_loaded:
+            self.class_mapping = {class_id: label for class_id, label in self.class_mapping.items() if label != "box"}
+            self.box_detection_source = "no dedicated box class configured"
+        else:
+            self.box_detection_source = "COCO backpack/suitcase proxies"
 
     def detect(self, image: np.ndarray) -> Dict[str, Any]:
         """

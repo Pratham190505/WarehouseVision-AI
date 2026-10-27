@@ -43,6 +43,10 @@
                     📤
                     <span class="nav-tooltip">Upload / Analysis</span>
                 </button>
+                <button class="nav-item" data-section="sectionBoxTracking" title="Box Tracking">
+                    📦
+                    <span class="nav-tooltip">Box Tracking</span>
+                </button>
                 <button class="nav-item" data-section="sectionHistory" title="History">
                     🕐
                     <span class="nav-tooltip">History</span>
@@ -275,6 +279,23 @@
                                 🔍 Analyze Warehouse
                             </button>
                         </div>
+                    </div>
+                </section>
+
+                <section id="sectionBoxTracking" class="box-tracking-section">
+                    <div class="upload-card">
+                        <div class="upload-header">
+                            <h2 class="upload-title">Box Tracking and Counting</h2>
+                            <p class="upload-desc">Upload a recorded conveyor video to track and count confirmed unique boxes.</p>
+                        </div>
+                        <div class="box-tracking-upload">
+                            <label for="boxVideoInput">Recorded video</label>
+                            <input id="boxVideoInput" type="file" accept=".mp4,.avi,.mov,.mkv,.wmv,.flv">
+                            <button id="boxRunBtn" class="btn btn-primary" type="button" disabled>Upload and process video</button>
+                        </div>
+                        <p class="box-tracking-note">The default YOLO model uses backpack and suitcase as box proxies, not a cardboard-box class. Set `MODEL_PATH` to a box-trained model and `BOX_CLASS_IDS` to its box class ID(s) to use dedicated box detections.</p>
+                        <p id="boxTrackingStatus" class="box-tracking-status" aria-live="polite">Choose a recorded video to begin.</p>
+                        <div id="boxTrackingResults" class="box-tracking-results"></div>
                     </div>
                 </section>
 

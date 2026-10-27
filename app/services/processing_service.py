@@ -26,6 +26,7 @@ VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv"}
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 UPLOAD_DIR = BASE_DIR / os.getenv("UPLOAD_DIR", "uploads")
 RESULT_DIR = BASE_DIR / os.getenv("RESULT_DIR", "results")
+BOX_TRACKING_RESULT_DIR = BASE_DIR / os.getenv("BOX_TRACKING_RESULT_DIR", "private_box_results")
 
 
 def get_media_type(filename: str) -> Optional[str]:
@@ -114,7 +115,7 @@ class ProcessingService:
         return analysis_id
 
     def process_media(self, analysis_id: str, media_path: str,
-                      media_type: str) -> Dict[str, Any]:
+                      media_type: str, box_tracking_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Process media through the appropriate pipeline.
 
@@ -134,9 +135,11 @@ class ProcessingService:
             os.makedirs(result_dir, exist_ok=True)
             result = self.image_service.process(media_path, result_dir, analysis_id)
         elif media_type == "video":
-            result_dir = str(RESULT_DIR / "videos")
+            result_dir = str(BOX_TRACKING_RESULT_DIR if box_tracking_config is not None else RESULT_DIR / "videos")
             os.makedirs(result_dir, exist_ok=True)
-            result = self.video_service.process(media_path, result_dir, analysis_id)
+            result = self.video_service.process(
+                media_path, result_dir, analysis_id, box_tracking_config=box_tracking_config
+            )
         else:
             result = {
                 "analysis_id": analysis_id,
@@ -196,6 +199,10 @@ class ProcessingService:
                 "processed_frames": tracking.get("processed_frames", 0),
                 "frame_data": tracking.get("frame_data", [])[:100],
             }
+
+        if "box_tracking" in result:
+            update_data["box_tracking"] = serialize_mongo_doc(result["box_tracking"])
+            update_data["unique_boxes_tracked"] = int(result["box_tracking"].get("total_unique_boxes", 0))
 
         # Retrieve user_id from existing analysis
         user_id = None
@@ -282,6 +289,8 @@ class ProcessingService:
                         "analytics": 1,
                         "result_path": 1,
                         "thumbnail_path": 1,
+                        "box_tracking": 1,
+                        "unique_boxes_tracked": 1,
                     }
                 ).sort("timestamp", -1).limit(limit)
 

@@ -11,6 +11,7 @@ WarehouseVision AI is a computer vision platform for analyzing warehouse environ
 - **Machine Proximity Safety Alerts** — Detect workers entering configured hazardous zones around forklifts and industrial machinery with prominent dashboard alerts
 - **Object Detection** — Detect workers, forklifts, boxes, and pallets using YOLO
 - **Video Tracking** — Track objects across video frames with ByteTrack maintaining persistent object IDs
+- **Box Tracking and Counting** — Upload a recorded video and count confirmed unique ByteTrack box tracks with per-video IDs
 - **Restricted Zone Detection** — Configurable polygon zones with violation alerts
 - **Occupancy Analysis** — Approximate space utilization estimation
 - **Analytics Dashboard** — Modern SaaS-style dashboard with KPI cards, safety banners, charts, and insights
@@ -362,6 +363,17 @@ config = SafetyConfig(
 | `GET` | `/api/analysis/{id}` | Retrieve specific analysis result and safety alerts (user-scoped) |
 | `GET` | `/api/analytics` | Aggregated KPIs, safety counters, and history for current user |
 | `GET` | `/api/history` | Analysis history records for current user |
+
+### Box Tracking and Counting
+Upload a recorded video in the dashboard's Box Tracking section to see the annotated video, total unique confirmed box tracks, and boxes currently visible. The workflow uses the existing Ultralytics YOLO and ByteTrack pipeline, assigns readable `BOX-001`-style IDs within each analysis, and counts each confirmed track once. A repeated run creates a separate session. Counts and tracker configuration are saved with the analysis, and output videos are served through authenticated, owner-checked routes:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/box-tracking/{analysis_id}/analyze` | Start a new per-video box-tracking session |
+| `GET` | `/api/box-tracking/{analysis_id}/result` | Retrieve the owned annotated video |
+| `GET` | `/api/box-tracking/{analysis_id}/thumbnail` | Retrieve the owned result thumbnail |
+
+The fallback `yolov8n.pt` COCO model maps backpack and suitcase detections as box proxies; these are not carton detections and can produce misleading results. For carton counting, configure `MODEL_PATH` to a suitable custom model and set `BOX_CLASS_IDS` to its carton class IDs (comma-separated). Dedicated carton classes are detected from model labels where possible. No model is downloaded automatically. If no dedicated class is configured or found in a custom model, box counting is disabled for that model. Results are estimates affected by camera angle, lighting, occlusion, object separation, and detector quality. Configure confirmation and visibility with `BOX_TRACK_MIN_OBSERVATIONS` (default `3`), `BOX_TRACK_MIN_AVERAGE_CONFIDENCE` (`0.35`), `BOX_VISIBLE_WINDOW_FRAMES` (`2`), `BOX_TRACK_BUFFER_FRAMES` (`30`), and detector candidate threshold `BOX_TRACK_DETECTION_CONFIDENCE` (`0.1`). Results are stored under `private_box_results/` (override with `BOX_TRACKING_RESULT_DIR`).
 
 ---
 

@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 import cv2
 import numpy as np
 
-from app.vision.detector import DEFAULT_CLASS_MAPPING, WAREHOUSE_LABELS
+from app.vision.detector import WAREHOUSE_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class WarehouseTracker:
             detector: WarehouseDetector instance with loaded YOLO model.
         """
         self.detector = detector
-        self.class_mapping = DEFAULT_CLASS_MAPPING.copy()
+        self.class_mapping = detector.class_mapping.copy()
 
         # Track unique IDs per class
         self.unique_ids: Dict[str, Set[int]] = {
@@ -43,13 +43,26 @@ class WarehouseTracker:
 
     def reset(self):
         """Reset tracker state for a new video."""
+        # Ultralytics keeps ByteTrack instances on its predictor when persist=True.
+        # Reset them with our per-video counters so tracker IDs cannot leak between uploads.
+        predictor = getattr(self.detector.model, "predictor", None)
+        for byte_tracker in getattr(predictor, "trackers", []) or []:
+            reset = getattr(byte_tracker, "reset", None)
+            if callable(reset):
+                reset()
         for key in self.unique_ids:
             self.unique_ids[key] = set()
         self.frame_data = []
         self.total_frames = 0
         self.processed_frames = 0
 
-    def track_frame(self, frame: np.ndarray, frame_idx: int) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def track_frame(
+        self,
+        frame: np.ndarray,
+        frame_idx: int,
+        confidence: Optional[float] = None,
+        annotate_box_detections: bool = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Track objects in a single video frame using YOLO's built-in tracker.
 
@@ -66,18 +79,31 @@ class WarehouseTracker:
         try:
             results = self.detector.model.track(
                 frame,
-                conf=self.detector.confidence,
+                conf=confidence if confidence is not None else self.detector.confidence,
                 persist=True,
                 verbose=False,
                 tracker="bytetrack.yaml",
             )
         except Exception as e:
             logger.warning(f"Tracking failed on frame {frame_idx}, falling back to detection: {e}")
-            annotated, detections, counts = self.detector.detect_frame(frame)
+            if annotate_box_detections:
+                annotated, detections, counts = self.detector.detect_frame(frame)
+            else:
+                fallback = self.detector.detect(frame)
+                detections, counts = fallback["detections"], fallback["counts"]
+                annotated = frame.copy()
+                for detection in detections:
+                    warehouse_class = detection.get("class")
+                    if warehouse_class == "box":
+                        continue
+                    x1, y1, x2, y2 = detection.get("bbox", [0, 0, 0, 0])
+                    color = WAREHOUSE_LABELS.get(warehouse_class, {}).get("color", (200, 200, 200))
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             frame_stats = {
                 "frame": frame_idx,
                 "counts": counts,
                 "tracking_ids": {},
+                "detections": detections,
             }
             self.frame_data.append(frame_stats)
             self.processed_frames += 1
@@ -122,6 +148,9 @@ class WarehouseTracker:
                     "center": [(x1 + x2) // 2, (y1 + y2) // 2],
                     "track_id": track_id,
                 })
+
+                if warehouse_class == "box" and not annotate_box_detections:
+                    continue
 
                 # Draw annotation
                 info = WAREHOUSE_LABELS.get(warehouse_class, {"color": (200, 200, 200)})

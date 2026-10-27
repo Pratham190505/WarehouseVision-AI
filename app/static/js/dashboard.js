@@ -37,6 +37,10 @@ const Dashboard = (() => {
         els.fileRemove = document.getElementById('fileRemove');
         els.analyzeBtn = document.getElementById('analyzeBtn');
         els.chooseBtn = document.getElementById('chooseBtn');
+        els.boxVideoInput = document.getElementById('boxVideoInput');
+        els.boxRunBtn = document.getElementById('boxRunBtn');
+        els.boxTrackingStatus = document.getElementById('boxTrackingStatus');
+        els.boxTrackingResults = document.getElementById('boxTrackingResults');
 
         els.processingStatus = document.getElementById('processingStatus');
         els.statusIcon = document.getElementById('statusIcon');
@@ -137,6 +141,10 @@ const Dashboard = (() => {
         if (els.analyzeBtn) {
             els.analyzeBtn.addEventListener('click', startAnalysis);
         }
+        els.boxVideoInput?.addEventListener('change', () => {
+            els.boxRunBtn.disabled = !els.boxVideoInput.files?.length || isProcessing;
+        });
+        els.boxRunBtn?.addEventListener('click', runBoxTracking);
         if (els.chooseBtn) {
             els.chooseBtn.addEventListener('click', () => els.fileInput?.click());
         }
@@ -416,6 +424,64 @@ const Dashboard = (() => {
         if (els.analyzeBtn) els.analyzeBtn.disabled = true;
     }
 
+    let boxTrackingAnalysisId = null;
+
+    async function runBoxTracking() {
+        const file = els.boxVideoInput?.files?.[0];
+        if (!file || isProcessing) return;
+        isProcessing = true;
+        els.boxRunBtn.disabled = true;
+        els.boxTrackingStatus.textContent = 'Uploading recorded video…';
+        els.boxTrackingResults.innerHTML = '';
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            const uploadResponse = await fetch('/api/upload', { method: 'POST', body: form });
+            const uploaded = await uploadResponse.json();
+            if (!uploadResponse.ok) throw new Error(uploaded.detail || 'Video upload failed.');
+            if (uploaded.media_type !== 'video') throw new Error('Choose a recorded video file.');
+
+            els.boxTrackingStatus.textContent = 'Video uploaded. Detecting and tracking boxes… This can take a while for long videos.';
+            const response = await fetch(`/api/box-tracking/${encodeURIComponent(uploaded.analysis_id)}/analyze`, { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || 'Box tracking failed.');
+            boxTrackingAnalysisId = data.analysis_id;
+            renderBoxTrackingResults(data);
+            els.boxTrackingStatus.textContent = 'Processing complete.';
+            loadDashboardData();
+        } catch (error) {
+            els.boxTrackingStatus.textContent = error.message;
+            showToast(error.message, 'error');
+        } finally {
+            isProcessing = false;
+            els.boxRunBtn.disabled = !els.boxVideoInput?.files?.length;
+        }
+    }
+
+    function renderBoxTrackingResults(data) {
+        const result = data?.box_tracking;
+        if (!result || !els.boxTrackingResults) return;
+        boxTrackingAnalysisId = data.analysis_id || boxTrackingAnalysisId;
+        const tracks = result.confirmed_tracks || [];
+        const ids = tracks.slice(0, 30).map(track =>
+            `<li><strong>${escapeHtml(track.box_id)}</strong> <span>${Number(track.average_confidence || 0).toFixed(2)} confidence</span></li>`
+        ).join('');
+        const sourceWarning = result.box_detection_source === 'COCO backpack/suitcase proxies'
+            ? '<p class="box-tracking-note box-model-warning">This model detects backpack/suitcase proxies, not cardboard boxes. Counts are approximate.</p>'
+            : result.box_detection_source === 'no dedicated box class configured'
+                ? '<p class="box-tracking-note box-model-warning">The configured model has no dedicated box class. Configure BOX_CLASS_IDS or a model labeled for boxes.</p>'
+                : '';
+        els.boxTrackingResults.innerHTML = `
+            <div class="box-count-summary">
+                <div class="box-count-primary"><strong>${Number(result.total_unique_boxes || 0)}</strong><span>Total unique boxes tracked</span></div>
+                <div><strong>${Number(result.currently_visible_boxes || 0)}</strong><span>Currently visible boxes</span></div>
+            </div>
+            <div class="box-output-video"><video controls playsinline preload="metadata" src="${escapeHtml(data.result_path || '')}" poster="${escapeHtml(data.thumbnail_path || '')}"></video></div>
+            <h3 class="box-tracking-list-title">Confirmed box IDs${tracks.length > 30 ? ` (first 30 of ${tracks.length})` : ''}</h3>
+            <ul class="box-confirmed-list">${ids || '<li>No tracks met the confirmation threshold.</li>'}</ul>
+            ${sourceWarning}
+            ${result.untracked_box_detections ? `<p class="box-tracking-note">${Number(result.untracked_box_detections)} box detections had no tracker ID and were not counted.</p>` : ''}`;
+    }
     function formatFileSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -511,6 +577,10 @@ const Dashboard = (() => {
 
     // ===== Render Results =====
     function renderAnalysisResult(data) {
+        if (data.box_tracking && data.analysis_id) {
+            boxTrackingAnalysisId = data.analysis_id;
+            renderBoxTrackingResults(data);
+        }
         const counts = data.object_counts || {};
         const analytics = data.analytics || {};
 
