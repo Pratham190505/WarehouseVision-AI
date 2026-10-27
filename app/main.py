@@ -94,11 +94,11 @@ async def root_redirect(request: Request):
 
 
 @app.get("/dashboard")
+@app.get("/analysis")
+@app.get("/safety")
+@app.get("/box-counting")
 async def dashboard_view(request: Request):
-    """
-    Protected dashboard page.
-    Unauthenticated users are redirected to /login.
-    """
+    """Serve the shared, authenticated application shell for each main view."""
     user = get_current_user_optional(request)
     if not user:
         return RedirectResponse(url="/login", status_code=303)

@@ -13,7 +13,6 @@
     --bg-secondary: #EEF1F6;
     --bg-card: #FFFFFF;
     --bg-card-hover: #FAFBFD;
-    --bg-sidebar: #FFFFFF;
     --bg-header: rgba(255, 255, 255, 0.85);
     --bg-input: #F4F6FA;
     --bg-overlay: rgba(0, 0, 0, 0.4);
@@ -82,7 +81,6 @@
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.1);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
     --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.08);
-    --shadow-sidebar: 2px 0 12px rgba(0, 0, 0, 0.04);
     --shadow-glow: 0 0 20px rgba(79, 106, 255, 0.15);
 
     /* Radii */
@@ -113,9 +111,6 @@
     --font-size-4xl: 2.25rem;
 
     /* Layout */
-    --sidebar-width: 72px;
-    --sidebar-expanded: 240px;
-    --header-height: 64px;
     --content-max-width: 1440px;
 
     /* Transitions */
@@ -148,7 +143,6 @@
     --bg-secondary: #111620;
     --bg-card: #161B26;
     --bg-card-hover: #1C2233;
-    --bg-sidebar: #0F1319;
     --bg-header: rgba(15, 19, 25, 0.9);
     --bg-input: #1C2233;
     --bg-overlay: rgba(0, 0, 0, 0.6);
@@ -198,7 +192,6 @@
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.35);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
     --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.2);
-    --shadow-sidebar: 2px 0 12px rgba(0, 0, 0, 0.2);
     --shadow-glow: 0 0 20px rgba(91, 122, 255, 0.2);
 
     --scrollbar-bg: #111620;

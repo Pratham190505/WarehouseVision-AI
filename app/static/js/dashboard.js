@@ -7,7 +7,7 @@
  * - Dashboard data loading from backend
  * - History table population
  * - Insights rendering
- * - Sidebar navigation
+ * - URL-backed top navigation
  * - Modal/detail views
  */
 
@@ -77,9 +77,8 @@ const Dashboard = (() => {
 
         els.historyBody = document.getElementById('historyBody');
 
-        els.sidebar = document.getElementById('sidebar');
-        els.sidebarOverlay = document.getElementById('sidebarOverlay');
-        els.hamburger = document.getElementById('hamburgerBtn');
+        els.mobileNavToggle = document.getElementById('mobileNavToggle');
+        els.primaryNavigation = document.getElementById('primaryNavigation');
 
         els.modalOverlay = document.getElementById('modalOverlay');
         els.modalTitle = document.getElementById('modalTitle');
@@ -93,7 +92,6 @@ const Dashboard = (() => {
         els.userAvatar = document.getElementById('userAvatar');
 
         // Settings Elements
-        els.sidebarSettingsBtn = document.getElementById('sidebarSettingsBtn');
         els.headerUserProfile = document.getElementById('headerUserProfile');
         els.settingsModalOverlay = document.getElementById('settingsModalOverlay');
         els.settingsModalClose = document.getElementById('settingsModalClose');
@@ -112,7 +110,6 @@ const Dashboard = (() => {
 
         // Safety Elements
         els.activeSafetyAlertsBanner = document.getElementById('activeSafetyAlertsBanner');
-        els.navSafetyBtn = document.getElementById('navSafetyBtn');
         els.navAlertBadge = document.getElementById('navAlertBadge');
         els.kpiSafetyActive = document.getElementById('kpiSafetyActive');
         els.kpiSafetyActiveMeta = document.getElementById('kpiSafetyActiveMeta');
@@ -155,28 +152,23 @@ const Dashboard = (() => {
             });
         }
 
-        // Sidebar
-        if (els.hamburger) {
-            els.hamburger.addEventListener('click', toggleSidebar);
-        }
-        if (els.sidebarOverlay) {
-            els.sidebarOverlay.addEventListener('click', closeSidebar);
-        }
-
-        // Nav items
-        document.querySelectorAll('.nav-item[data-section]').forEach(item => {
-            item.addEventListener('click', () => {
-                const section = item.getAttribute('data-section');
-                scrollToSection(section);
-                setActiveNav(item);
-                closeSidebar();
+        // Shared top navigation and URL-backed views
+        els.mobileNavToggle?.addEventListener('click', () => {
+            const isOpen = els.primaryNavigation?.classList.toggle('open') || false;
+            els.mobileNavToggle.setAttribute('aria-expanded', String(isOpen));
+            els.mobileNavToggle.setAttribute('aria-label', isOpen ? 'Close navigation menu' : 'Open navigation menu');
+        });
+        document.querySelectorAll('.nav-link[data-route], .brand[data-route]').forEach(link => {
+            link.addEventListener('click', event => {
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                navigateToRoute(link.dataset.route);
             });
         });
+        window.addEventListener('popstate', () => renderRoute(window.location.pathname));
+        renderRoute(window.location.pathname);
 
         // Settings modal triggers
-        if (els.sidebarSettingsBtn) {
-            els.sidebarSettingsBtn.addEventListener('click', openSettingsModal);
-        }
         if (els.headerUserProfile) {
             els.headerUserProfile.addEventListener('click', openSettingsModal);
             els.headerUserProfile.addEventListener('keydown', (e) => {
@@ -238,7 +230,8 @@ const Dashboard = (() => {
             if (e.key === 'Escape') {
                 closeModal();
                 closeSettingsModal();
-                closeSidebar();
+                els.primaryNavigation?.classList.remove('open');
+                els.mobileNavToggle?.setAttribute('aria-expanded', 'false');
             }
         });
     }
@@ -997,27 +990,54 @@ const Dashboard = (() => {
         }
     }
 
-    // ===== Sidebar =====
-    function toggleSidebar() {
-        els.sidebar?.classList.toggle('open');
-        els.sidebarOverlay?.classList.toggle('visible');
+    // ===== URL-backed application views =====
+    const routeViews = {
+        '/dashboard': 'dashboard',
+        '/analysis': 'analysis',
+        '/safety': 'safety',
+        '/box-counting': 'box-counting',
+    };
+    const viewRoutes = Object.fromEntries(Object.entries(routeViews).map(([route, view]) => [view, route]));
+
+    function renderRoute(pathname) {
+        const path = routeViews[pathname] ? pathname : '/dashboard';
+        const activeView = routeViews[path];
+        document.querySelectorAll('[data-view]').forEach(element => {
+            element.hidden = element.dataset.view !== activeView;
+        });
+        document.querySelectorAll('.nav-link[data-route]').forEach(link => {
+            const active = link.dataset.route === path;
+            link.classList.toggle('active', active);
+            if (active) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+        els.primaryNavigation?.classList.remove('open');
+        if (els.mobileNavToggle) {
+            els.mobileNavToggle.setAttribute('aria-expanded', 'false');
+            els.mobileNavToggle.setAttribute('aria-label', 'Open navigation menu');
+        }
+        if (window.location.pathname !== path) window.history.replaceState({}, '', path);
+        if (activeView === 'dashboard' && typeof Chart !== 'undefined') {
+            requestAnimationFrame(() => {
+                document.querySelectorAll('canvas').forEach(canvas => Chart.getChart(canvas)?.resize());
+            });
+        }
     }
 
-    function closeSidebar() {
-        els.sidebar?.classList.remove('open');
-        els.sidebarOverlay?.classList.remove('visible');
-    }
-
-    function setActiveNav(item) {
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        item.classList.add('active');
+    function navigateToRoute(path) {
+        if (!routeViews[path]) return;
+        if (window.location.pathname !== path) window.history.pushState({}, '', path);
+        renderRoute(path);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function scrollToSection(id) {
         const el = document.getElementById(id);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+        if (!el) return;
+        const view = el.dataset.view;
+        const route = viewRoutes[view];
+        if (route && route !== window.location.pathname) navigateToRoute(route);
+        requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
 
     // ===== Modal =====

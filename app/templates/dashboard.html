@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="WarehouseVision AI — AI-Powered Warehouse Vision and Analytics Platform. Detect objects, track movements, and analyze warehouse environments.">
-    <title>WarehouseVision AI — Warehouse Analytics Dashboard</title>
+    <title>WarehouseVision AI</title>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/static/css/themes.css?v=1.2">
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.2">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.4">
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -19,96 +19,43 @@
 <body>
     <div class="app-layout">
 
-        <!-- ===== Sidebar ===== -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-logo">
-                <div class="logo-icon">W</div>
-            </div>
-
-            <nav class="sidebar-nav">
-                <button class="nav-item" data-section="sectionDashboard" title="Dashboard">
-                    📊
-                    <span class="nav-tooltip">Dashboard</span>
-                </button>
-                <button class="nav-item" data-section="sectionSafety" id="navSafetyBtn" title="Machine Safety" style="position:relative;">
-                    ⚠️
-                    <span class="nav-tooltip">Machine Safety</span>
-                    <span class="nav-alert-badge" id="navAlertBadge"></span>
-                </button>
-                <button class="nav-item" data-section="sectionAnalytics" title="Analytics">
-                    📈
-                    <span class="nav-tooltip">Analytics</span>
-                </button>
-                <button class="nav-item" data-section="sectionUpload" title="Upload & Analyze">
-                    📤
-                    <span class="nav-tooltip">Upload / Analysis</span>
-                </button>
-                <button class="nav-item" data-section="sectionBoxTracking" title="Box Tracking">
-                    📦
-                    <span class="nav-tooltip">Box Tracking</span>
-                </button>
-                <button class="nav-item" data-section="sectionHistory" title="History">
-                    🕐
-                    <span class="nav-tooltip">History</span>
-                </button>
+        <header class="topbar">
+            <a class="brand" href="/dashboard" data-route="/dashboard" aria-label="WarehouseVision AI dashboard">
+                <span class="brand-mark" aria-hidden="true">W</span>
+                <span class="brand-copy"><strong>WarehouseVision AI</strong><small>Warehouse Intelligence Platform</small></span>
+            </a>
+            <button class="mobile-nav-toggle" id="mobileNavToggle" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="primaryNavigation">&#9776;</button>
+            <nav class="primary-navigation" id="primaryNavigation" aria-label="Primary navigation">
+                <a class="nav-link" href="/dashboard" data-route="/dashboard">Dashboard</a>
+                <a class="nav-link" href="/analysis" data-route="/analysis">Analysis</a>
+                <a class="nav-link" href="/safety" data-route="/safety">Safety<span class="nav-alert-badge" id="navAlertBadge"></span></a>
+                <a class="nav-link" href="/box-counting" data-route="/box-counting">Box Counting</a>
             </nav>
-
-            <div class="sidebar-footer">
-                <button class="theme-toggle-btn" title="Toggle Theme">🌙</button>
-                <button class="nav-item" id="sidebarSettingsBtn" title="Settings" style="margin:0;">
-                    ⚙️
-                    <span class="nav-tooltip">Settings</span>
-                </button>
-                <div class="sidebar-version">WV AI v1.0</div>
+            <div class="header-right">
+                <button class="header-icon-btn" type="button" title="Notifications" aria-label="Notifications">&#128276;<span class="badge"></span></button>
+                <button class="header-icon-btn theme-toggle-btn" type="button" title="Toggle Theme" aria-label="Toggle theme">&#127769;</button>
+                <div class="header-user" id="headerUserProfile" title="Account Settings" role="button" style="cursor:pointer;" tabindex="0">
+                    <div class="avatar" id="userAvatar">{{ user.name[:2].upper() if user and user.name else 'VO' }}</div>
+                    <div class="user-info-text">
+                        <span class="user-name" id="userNameDisplay">{{ user.name if user and user.name else 'Warehouse User' }}</span>
+                        <span class="user-email" id="userEmailDisplay">{{ user.email if user and user.email else '' }}</span>
+                    </div>
+                </div>
+                <button class="btn-logout" id="logoutBtn" type="button" title="Sign Out"><span>&#128682;</span><span>Logout</span></button>
             </div>
-        </aside>
-
-        <!-- Sidebar overlay for mobile -->
-        <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-        <!-- ===== Main Content ===== -->
+        </header>
         <main class="main-content">
-
-            <!-- Header -->
-            <header class="header">
-                <div class="header-left">
-                    <button class="hamburger-btn" id="hamburgerBtn" title="Menu">☰</button>
-                    <div>
-                        <div class="header-title">Dashboard</div>
-                        <div class="header-subtitle">AI-Powered Warehouse Analytics</div>
-                    </div>
-                </div>
-                <div class="header-right">
-                    <button class="header-icon-btn" title="Notifications">
-                        🔔
-                        <span class="badge"></span>
-                    </button>
-                    <button class="header-icon-btn theme-toggle-btn" title="Toggle Theme">🌙</button>
-                    <div class="header-user" id="headerUserProfile" title="Account Settings" style="cursor:pointer;" tabindex="0">
-                        <div class="avatar" id="userAvatar">{{ user.name[:2].upper() if user and user.name else 'VO' }}</div>
-                        <div class="user-info-text">
-                            <span class="user-name" id="userNameDisplay">{{ user.name if user and user.name else 'Warehouse User' }}</span>
-                            <span class="user-email" id="userEmailDisplay">{{ user.email if user and user.email else '' }}</span>
-                        </div>
-                    </div>
-                    <button class="btn-logout" id="logoutBtn" title="Sign Out">
-                        <span>🚪</span>
-                        <span>Logout</span>
-                    </button>
-                </div>
-            </header>
-
             <!-- Content -->
             <div class="content">
 
                 <!-- ===== Active Machine Proximity Safety Alerts Banner ===== -->
-                <div id="activeSafetyAlertsBanner" class="safety-alerts-container"></div>
+                <div id="activeSafetyAlertsBanner" class="safety-alerts-container" data-view="safety"></div>
 
                 <!-- ===== KPI Section ===== -->
-                <section id="sectionDashboard">
+                <section id="sectionDashboard" data-view="dashboard">
                     <div class="section-header">
                         <div>
-                            <h1 class="section-title">WarehouseVision AI</h1>
+                            <h1 class="section-title">Warehouse Overview</h1>
                             <p class="section-subtitle">Real-time warehouse analytics from your latest analysis</p>
                         </div>
                     </div>
@@ -162,7 +109,7 @@
                 </section>
 
                 <!-- ===== Charts Section ===== -->
-                <section id="sectionAnalytics">
+                <section id="sectionAnalytics" data-view="dashboard">
                     <div class="charts-grid">
                         <div class="chart-card">
                             <div class="chart-header">
@@ -240,7 +187,7 @@
                 </section>
 
                 <!-- ===== Upload Section ===== -->
-                <section id="sectionUpload" class="upload-section">
+                <section id="sectionUpload" class="upload-section" data-view="analysis">
                     <div class="upload-card">
                         <div class="upload-header">
                             <h2 class="upload-title">Analyze Warehouse Media</h2>
@@ -282,7 +229,7 @@
                     </div>
                 </section>
 
-                <section id="sectionBoxTracking" class="box-tracking-section">
+                <section id="sectionBoxTracking" class="box-tracking-section" data-view="box-counting">
                     <div class="upload-card">
                         <div class="upload-header">
                             <h2 class="upload-title">Box Tracking and Counting</h2>
@@ -300,7 +247,7 @@
                 </section>
 
                 <!-- ===== Processing Status ===== -->
-                <div class="processing-status" id="processingStatus">
+                <div class="processing-status" id="processingStatus" data-view="analysis">
                     <div class="status-card">
                         <div class="status-header">
                             <span class="status-icon" id="statusIcon">⏳</span>
@@ -316,7 +263,7 @@
                 </div>
 
                 <!-- ===== Detection Result ===== -->
-                <section class="result-section" id="resultSection">
+                <section class="result-section" id="resultSection" data-view="analysis">
                     <div class="result-card">
                         <div class="result-header">
                             <h2 class="result-title" id="resultTitle">Detection Result</h2>
@@ -327,7 +274,7 @@
                 </section>
 
                 <!-- ===== History ===== -->
-                <section id="sectionHistory" class="history-section">
+                <section id="sectionHistory" class="history-section" data-view="analysis">
                     <div class="history-card">
                         <div class="history-header">
                             <h2 class="history-title">Analysis History</h2>
@@ -363,7 +310,7 @@
                 </section>
 
                 <!-- ===== Machine Safety Section ===== -->
-                <section id="sectionSafety" class="safety-section">
+                <section id="sectionSafety" class="safety-section" data-view="safety">
                     <div class="section-header">
                         <div>
                             <h2 class="section-title" style="display:flex;align-items:center;gap:10px;">
@@ -588,6 +535,6 @@
     <!-- Scripts -->
     <script src="/static/js/theme.js?v=1.3"></script>
     <script src="/static/js/charts.js?v=1.3"></script>
-    <script src="/static/js/dashboard.js?v=1.3"></script>
+    <script src="/static/js/dashboard.js?v=1.4"></script>
 </body>
 </html>
