@@ -856,6 +856,12 @@ a:hover { opacity: 0.85; }
     color: var(--text-secondary);
 }
 
+.history-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .history-table .view-btn {
     padding: 4px 12px;
     border-radius: var(--radius-sm);
@@ -871,6 +877,24 @@ a:hover { opacity: 0.85; }
 
 .history-table .view-btn:hover {
     background: var(--primary);
+    color: white;
+}
+
+.history-table .delete-btn {
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--danger-light);
+    color: var(--danger);
+    border: 1px solid transparent;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all var(--transition-fast);
+}
+
+.history-table .delete-btn:hover {
+    background: var(--danger);
     color: white;
 }
 

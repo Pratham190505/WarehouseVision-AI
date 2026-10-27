@@ -43,6 +43,25 @@ async def get_analysis(
     return JSONResponse(content=jsonable_encoder(result))
 
 
+@router.delete("/analysis/{analysis_id}")
+async def delete_analysis(
+    analysis_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Delete a specific analysis result by ID and associated safety events.
+    Guarantees user cannot delete another user's analysis.
+    """
+    service = get_processing_service()
+    user_id = str(user.get("id"))
+    success = service.delete_analysis(analysis_id, user_id=user_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Analysis not found or access denied.")
+
+    return JSONResponse(content={"success": True, "message": "Analysis deleted successfully."})
+
+
 @router.get("/analytics")
 async def get_analytics(
     limit: int = Query(default=50, ge=1, le=200),

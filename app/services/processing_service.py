@@ -308,6 +308,104 @@ class ProcessingService:
                 break
         return records
 
+    def delete_analysis(self, analysis_id: str, user_id: Optional[str] = None) -> bool:
+        """
+        Delete an analysis record, its generated output files, and associated safety events.
+        If user_id is provided, ensures the record belongs to that user.
+        Returns True if deleted, False if not found or unauthorized.
+        """
+        target_doc = None
+        collection = get_collection("analyses")
+        if collection is not None:
+            try:
+                query: Dict[str, Any] = {"analysis_id": analysis_id}
+                if user_id:
+                    query["user_id"] = user_id
+                target_doc = collection.find_one(query)
+            except Exception as e:
+                logger.error(f"Failed to find analysis for deletion: {e}")
+
+        if target_doc is None and analysis_id in self._in_memory_analyses:
+            mem_doc = self._in_memory_analyses[analysis_id]
+            if not user_id or mem_doc.get("user_id") == user_id:
+                target_doc = mem_doc
+
+        if target_doc is None:
+            return False
+
+        # Attempt to clean up associated files if they exist
+        paths_to_clean = []
+        media_path = target_doc.get("media_path")
+        if media_path and isinstance(media_path, str) and os.path.isfile(media_path):
+            paths_to_clean.append(media_path)
+
+        result_path = target_doc.get("result_path")
+        if result_path and isinstance(result_path, str):
+            if result_path.startswith("/results/"):
+                rel_part = result_path.replace("/results/", "", 1)
+                full_result_path = RESULT_DIR / rel_part
+                if full_result_path.is_file():
+                    paths_to_clean.append(str(full_result_path))
+
+        thumbnail_path = target_doc.get("thumbnail_path")
+        if thumbnail_path and isinstance(thumbnail_path, str):
+            if thumbnail_path.startswith("/results/"):
+                rel_part = thumbnail_path.replace("/results/", "", 1)
+                full_thumb_path = RESULT_DIR / rel_part
+                if full_thumb_path.is_file():
+                    paths_to_clean.append(str(full_thumb_path))
+
+        box_tracking = target_doc.get("box_tracking")
+        if isinstance(box_tracking, dict):
+            for key in ("output_filename", "thumbnail_filename"):
+                bt_fname = box_tracking.get(key)
+                if bt_fname and isinstance(bt_fname, str):
+                    bt_path = BOX_TRACKING_RESULT_DIR / bt_fname
+                    if bt_path.is_file():
+                        paths_to_clean.append(str(bt_path))
+
+        for p in paths_to_clean:
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception as e:
+                logger.warning(f"Could not remove file {p}: {e}")
+
+        # Delete from MongoDB analyses
+        if collection is not None:
+            try:
+                query = {"analysis_id": analysis_id}
+                if user_id:
+                    query["user_id"] = user_id
+                collection.delete_one(query)
+            except Exception as e:
+                logger.error(f"Failed to delete analysis from MongoDB: {e}")
+
+        # Delete from in-memory analyses
+        self._in_memory_analyses.pop(analysis_id, None)
+
+        # Delete associated safety events
+        safety_col = get_collection("safety_events")
+        if safety_col is not None:
+            try:
+                safety_query: Dict[str, Any] = {"analysis_id": analysis_id}
+                if user_id:
+                    safety_query["user_id"] = user_id
+                safety_col.delete_many(safety_query)
+            except Exception as e:
+                logger.error(f"Failed to delete safety events for analysis {analysis_id}: {e}")
+
+        # In-memory safety events cleanup
+        keys_to_delete = [
+            k for k, v in self._in_memory_safety_events.items()
+            if v.get("analysis_id") == analysis_id and (not user_id or v.get("user_id") == user_id)
+        ]
+        for k in keys_to_delete:
+            self._in_memory_safety_events.pop(k, None)
+
+        logger.info(f"Successfully deleted analysis {analysis_id} for user {user_id}")
+        return True
+
     def get_dashboard_stats(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Get aggregated dashboard statistics filtered strictly by user_id.

@@ -16,6 +16,7 @@ const Dashboard = (() => {
     let selectedFile = null;
     let currentAnalysis = null;
     let isProcessing = false;
+    let currentHistory = [];
 
     // DOM Elements
     const els = {};
@@ -810,6 +811,11 @@ const Dashboard = (() => {
         if (analysisToDisplay) {
             currentAnalysis = analysisToDisplay;
             renderAnalysisResult(analysisToDisplay);
+        } else {
+            currentAnalysis = null;
+            if (els.resultSection) {
+                els.resultSection.hidden = true;
+            }
         }
 
         // Render history
@@ -821,6 +827,7 @@ const Dashboard = (() => {
 
     function renderHistory(history) {
         if (!els.historyBody) return;
+        currentHistory = history || [];
 
         if (!history || history.length === 0) {
             els.historyBody.innerHTML = `
@@ -854,14 +861,60 @@ const Dashboard = (() => {
                     <td>${counts.boxes ?? '--'}</td>
                     <td>${counts.pallets ?? '--'}</td>
                     <td>
-                        ${status === 'completed'
-                            ? `<button class="view-btn" onclick="Dashboard.viewAnalysis('${record.analysis_id}')">View</button>`
-                            : '--'
-                        }
+                        <div class="history-actions">
+                            ${status === 'completed'
+                                ? `<button class="view-btn" onclick="Dashboard.viewAnalysis('${record.analysis_id}')" title="View analysis details">View</button>`
+                                : ''
+                            }
+                            <button class="delete-btn" onclick="Dashboard.deleteAnalysis('${record.analysis_id}')" title="Delete analysis history">Delete</button>
+                        </div>
                     </td>
                 </tr>
             `;
         }).join('');
+    }
+
+    async function deleteAnalysis(analysisId) {
+        const record = currentHistory.find(r => r.analysis_id === analysisId);
+        const fileName = record ? (record.original_filename || record.filename || 'this file') : 'this file';
+
+        if (!confirm(`Are you sure you want to delete the analysis history for "${fileName}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            showToast('Deleting analysis...', 'info');
+            const resp = await fetch(`/api/analysis/${analysisId}`, {
+                method: 'DELETE',
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                showToast(err.detail || 'Failed to delete analysis.', 'error');
+                return;
+            }
+
+            showToast('Analysis deleted successfully.', 'success');
+
+            // If deleted item is currently viewed or saved as active, reset it
+            const activeId = localStorage.getItem('wv_active_analysis_id');
+            if (activeId === analysisId || (currentAnalysis && currentAnalysis.analysis_id === analysisId)) {
+                currentAnalysis = null;
+                localStorage.removeItem('wv_active_analysis_id');
+                if (els.resultSection) {
+                    els.resultSection.hidden = true;
+                }
+            }
+
+            // Close modal if open with this analysis
+            closeModal();
+
+            // Refresh dashboard data, history table, and safety data
+            await loadDashboardData();
+        } catch (e) {
+            console.error('Failed to delete analysis:', e);
+            showToast('An error occurred while deleting analysis.', 'error');
+        }
     }
 
     async function viewAnalysis(analysisId) {
@@ -1355,6 +1408,7 @@ const Dashboard = (() => {
     return {
         init,
         viewAnalysis,
+        deleteAnalysis,
         showToast,
         loadDashboardData,
         scrollToSection,
