@@ -330,7 +330,9 @@ a:hover { opacity: 0.85; }
 .box-confirmed-list li span { color: var(--text-secondary); font-size: var(--font-size-xs); }
 .box-model-warning { padding: 12px; border-left: 3px solid var(--warning); background: var(--bg-input); }
 .box-output-video { background: #090D16; border-radius: var(--radius-md); overflow: hidden; }
-.box-output-video video { display: block; width: 100%; max-height: 600px; }
+.box-output-video video { display: block; width: 100%; max-height: 75vh; min-height: 280px; object-fit: contain; }
+.box-video-download { display: inline-block; padding: 10px 14px; color: var(--primary); text-decoration: none; }
+.box-tracking-history-card { margin-top: var(--space-xl); }
 
 .upload-card {
     background: var(--bg-card);

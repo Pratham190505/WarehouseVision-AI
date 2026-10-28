@@ -17,6 +17,7 @@ const Dashboard = (() => {
     let currentAnalysis = null;
     let isProcessing = false;
     let currentHistory = [];
+    let latestVideoSafetySummary = null;
 
     // DOM Elements
     const els = {};
@@ -42,6 +43,7 @@ const Dashboard = (() => {
         els.boxRunBtn = document.getElementById('boxRunBtn');
         els.boxTrackingStatus = document.getElementById('boxTrackingStatus');
         els.boxTrackingResults = document.getElementById('boxTrackingResults');
+        els.boxTrackingHistoryBody = document.getElementById('boxTrackingHistoryBody');
 
         els.processingStatus = document.getElementById('processingStatus');
         els.statusIcon = document.getElementById('statusIcon');
@@ -144,6 +146,17 @@ const Dashboard = (() => {
             els.boxRunBtn.disabled = !els.boxVideoInput.files?.length || isProcessing;
         });
         els.boxRunBtn?.addEventListener('click', runBoxTracking);
+        els.boxTrackingHistoryBody?.addEventListener('click', event => {
+            const deleteButton = event.target.closest('[data-delete-box-analysis-id]');
+            if (deleteButton) {
+                deleteAnalysis(deleteButton.dataset.deleteBoxAnalysisId);
+                return;
+            }
+            const button = event.target.closest('[data-box-analysis-id]');
+            if (!button) return;
+            const record = currentHistory.find(item => item.analysis_id === button.dataset.boxAnalysisId);
+            if (record) renderBoxTrackingHistoryResult(record);
+        });
         if (els.chooseBtn) {
             els.chooseBtn.addEventListener('click', () => els.fileInput?.click());
         }
@@ -460,12 +473,49 @@ const Dashboard = (() => {
                 <div class="box-count-primary"><strong>${Number(result.total_unique_boxes || 0)}</strong><span>Total unique boxes tracked</span></div>
                 <div><strong>${Number(result.currently_visible_boxes || 0)}</strong><span>Currently visible boxes</span></div>
             </div>
-            <div class="box-output-video"><video controls playsinline preload="metadata" src="${escapeHtml(data.result_path || '')}" poster="${escapeHtml(data.thumbnail_path || '')}"></video></div>
+            <div class="box-output-video"><video controls playsinline preload="metadata" src="${escapeHtml(data.processed_video_url || data.result_path || '')}" poster="${escapeHtml(data.thumbnail_path || '')}">Your browser does not support video playback.</video><a class="box-video-download" href="${escapeHtml(data.processed_video_url || data.result_path || '')}" download>Download processed video</a></div>
             <h3 class="box-tracking-list-title">Confirmed box IDs${tracks.length > 30 ? ` (first 30 of ${tracks.length})` : ''}</h3>
             <ul class="box-confirmed-list">${ids || '<li>No tracks met the confirmation threshold.</li>'}</ul>
             ${sourceWarning}
             ${result.untracked_box_detections ? `<p class="box-tracking-note">${Number(result.untracked_box_detections)} box detections had no tracker ID and were not counted.</p>` : ''}`;
     }
+
+    function renderBoxTrackingHistory(history) {
+        if (!els.boxTrackingHistoryBody) return;
+        const records = (history || []).filter(record => record.media_type === 'video' && record.box_tracking);
+        if (!records.length) {
+            els.boxTrackingHistoryBody.innerHTML = '<tr><td colspan="4"><div class="history-empty"><div class="empty-icon">ðŸ“‹</div><div>No box-counting videos processed yet.</div></div></td></tr>';
+            return;
+        }
+
+        els.boxTrackingHistoryBody.innerHTML = records.map(record => `
+            <tr>
+                <td>${escapeHtml(record.original_filename || record.filename || 'Video')}</td>
+                <td>${escapeHtml(formatDate(record.timestamp || record.created_at || ''))}</td>
+                <td>${Number(record.box_tracking.total_unique_boxes || record.unique_boxes_tracked || 0)}</td>
+                <td class="history-actions">
+                    <button class="view-btn" type="button" data-box-analysis-id="${escapeHtml(record.analysis_id)}">View</button>
+                    <button class="delete-btn" type="button" data-delete-box-analysis-id="${escapeHtml(record.analysis_id)}">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderBoxTrackingHistoryResult(record) {
+        const analysisId = encodeURIComponent(record.analysis_id);
+        const tracking = record.box_tracking;
+        renderBoxTrackingResults({
+            analysis_id: record.analysis_id,
+            box_tracking: tracking,
+            result_path: `/api/box-tracking/${analysisId}/result`,
+            thumbnail_path: tracking.thumbnail_filename ? `/api/box-tracking/${analysisId}/thumbnail` : '',
+        });
+        if (els.boxTrackingStatus) {
+            els.boxTrackingStatus.textContent = `Showing processed video: ${record.original_filename || record.filename || 'Video'}`;
+        }
+        els.boxTrackingResults?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function formatFileSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -627,6 +677,23 @@ const Dashboard = (() => {
                         Boolean(data.processed_video_url) ||
                         (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')));
         const fileName = data.original_filename || data.filename || '';
+
+        const incidents = Array.isArray(data.safety_incidents) ? data.safety_incidents : [];
+        const alerts = Array.isArray(data.safety_alerts) ? data.safety_alerts : [];
+        const activeIncidents = incidents.filter(item => String(item.status || '').toUpperCase() === 'ACTIVE').length;
+        const resolvedIncidents = incidents.filter(item => String(item.status || '').toUpperCase() === 'RESOLVED').length;
+        const activeCount = activeIncidents || alerts.length;
+        const totalCount = Math.max(Number(data.safety_alerts_count) || 0, incidents.length, alerts.length);
+        latestVideoSafetySummary = isVideo && (activeCount > 0 || totalCount > 0 || resolvedIncidents > 0)
+            ? {
+                active: activeCount,
+                total: totalCount,
+                resolved: resolvedIncidents,
+                method: (incidents.find(item => item.proximity_method)?.proximity_method || 'Image-Space')
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, letter => letter.toUpperCase()),
+            }
+            : null;
 
         if (els.resultTitle) {
             els.resultTitle.textContent = isVideo 
@@ -825,6 +892,7 @@ const Dashboard = (() => {
 
         // Render history
         renderHistory(history);
+        renderBoxTrackingHistory(history);
 
         // Load machine safety events & alerts
         loadSafetyData();
@@ -909,6 +977,11 @@ const Dashboard = (() => {
                 if (els.resultSection) {
                     els.resultSection.hidden = true;
                 }
+            }
+            if (boxTrackingAnalysisId === analysisId) {
+                boxTrackingAnalysisId = null;
+                if (els.boxTrackingResults) els.boxTrackingResults.innerHTML = '';
+                if (els.boxTrackingStatus) els.boxTrackingStatus.textContent = 'Processed video deleted.';
             }
 
             // Close modal if open with this analysis
@@ -1187,9 +1260,16 @@ const Dashboard = (() => {
             renderSafetyEventsTable(events);
 
             // Update safety KPIs derived directly from persisted data
-            const activeCount = summary ? summary.active : activeAlerts.length;
-            const totalCount = summary ? summary.total : events.length;
-            const resolvedCount = summary ? summary.resolved : events.filter(e => e.status === 'RESOLVED').length;
+            // The live alerts endpoint is authoritative for currently active breaches.
+            // A completed video may have ended with zero active incidents even though
+            // an independently tracked alert is still active now.
+            const activeCount = Math.max(
+                Number(summary?.active) || 0,
+                activeAlerts.length,
+                Number(latestVideoSafetySummary?.active) || 0
+            );
+            const totalCount = latestVideoSafetySummary?.total ?? (summary ? summary.total : events.length);
+            const resolvedCount = latestVideoSafetySummary?.resolved ?? (summary ? summary.resolved : events.filter(e => e.status === 'RESOLVED').length);
 
             if (els.kpiSafetyActive) {
                 els.kpiSafetyActive.textContent = activeCount.toString();
@@ -1207,7 +1287,7 @@ const Dashboard = (() => {
             }
             if (els.kpiSafetyMode) {
                 const isCalibrated = config && config.camera_calibration && config.camera_calibration.enabled;
-                els.kpiSafetyMode.textContent = isCalibrated ? 'Metric (m)' : 'Image-Space';
+                els.kpiSafetyMode.textContent = latestVideoSafetySummary?.method || (isCalibrated ? 'Metric (m)' : 'Image-Space');
             }
             if (els.kpiSafetyModeMeta) {
                 const isCalibrated = config && config.camera_calibration && config.camera_calibration.enabled;
@@ -1221,6 +1301,13 @@ const Dashboard = (() => {
 
     function renderActiveSafetyBanner(alerts) {
         if (!els.activeSafetyAlertsBanner) return;
+        const visibleActiveCount = Array.isArray(alerts) ? alerts.length : 0;
+        if (els.kpiSafetyActive) els.kpiSafetyActive.textContent = String(visibleActiveCount);
+        if (els.kpiSafetyActiveMeta) {
+            els.kpiSafetyActiveMeta.textContent = visibleActiveCount > 0
+                ? `${visibleActiveCount} hazard${visibleActiveCount > 1 ? 's' : ''} currently active!`
+                : 'No active breaches';
+        }
         if (!alerts || alerts.length === 0) {
             els.activeSafetyAlertsBanner.innerHTML = '';
             if (els.navAlertBadge) els.navAlertBadge.classList.remove('active');

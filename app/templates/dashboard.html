@@ -8,7 +8,7 @@
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/static/css/themes.css?v=1.2">
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.6">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=1.7">
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -244,6 +244,17 @@
                         <p class="box-tracking-note">The default YOLO model uses backpack and suitcase as box proxies, not a cardboard-box class. Set `MODEL_PATH` to a box-trained model and `BOX_CLASS_IDS` to its box class ID(s) to use dedicated box detections.</p>
                         <p id="boxTrackingStatus" class="box-tracking-status" aria-live="polite">Choose a recorded video to begin.</p>
                         <div id="boxTrackingResults" class="box-tracking-results"></div>
+                    </div>
+                    <div class="history-card box-tracking-history-card">
+                        <div class="history-header"><h2 class="history-title">Box Counting Video History</h2></div>
+                        <div class="history-table-wrapper">
+                            <table class="history-table">
+                                <thead><tr><th>Video</th><th>Date</th><th>Total Boxes</th><th>Action</th></tr></thead>
+                                <tbody id="boxTrackingHistoryBody">
+                                    <tr><td colspan="4"><div class="history-empty"><div class="empty-icon">ðŸ“‹</div><div>No box-counting videos processed yet.</div></div></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -508,6 +519,6 @@
     <!-- Scripts -->
     <script src="/static/js/theme.js?v=1.3"></script>
     <script src="/static/js/charts.js?v=1.3"></script>
-    <script src="/static/js/dashboard.js?v=1.7"></script>
+    <script src="/static/js/dashboard.js?v=2.0"></script>
 </body>
 </html>
