@@ -14,7 +14,7 @@ import logging
 import subprocess
 import threading
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import cv2
 import numpy as np
@@ -30,8 +30,21 @@ from app.vision.box_counting import BoxCountingEngine
 
 logger = logging.getLogger(__name__)
 
-# Process every Nth frame to balance speed and accuracy
-FRAME_SKIP = 2  # Process every 2nd frame by default
+# Process every frame by default for complete frame-by-frame annotation
+FRAME_SKIP = 1
+
+
+def get_ffmpeg_binary() -> Optional[str]:
+    """Get path to a working FFmpeg binary if available."""
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.isfile(exe):
+            return exe
+    except Exception:
+        pass
+    import shutil
+    return shutil.which("ffmpeg")
 
 
 class VideoService:
@@ -76,7 +89,7 @@ class VideoService:
         writer = None
         result_path = None
         thumb_path = None
-        h264_path = None
+        raw_path = None
 
         try:
             # Open video
@@ -85,7 +98,9 @@ class VideoService:
                 raise ValueError(f"Could not open video: {video_path}")
 
             # Video properties
-            fps = cap.get(cv2.CAP_PROP_FPS) or 30
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            if fps <= 0 or np.isnan(fps):
+                fps = 30.0
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -106,12 +121,36 @@ class VideoService:
             if not self.zone_detector.has_zones:
                 self.zone_detector.add_default_zones(width, height)
 
-            # Output video writer
-            result_filename = f"{analysis_id}_processed.mp4"
-            result_path = os.path.join(result_dir, result_filename)
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(result_path, fourcc, fps, (width, height))
-            if not writer.isOpened():
+            # Output video paths and writer setup
+            final_result_filename = f"{analysis_id}_processed.mp4"
+            result_path = os.path.join(result_dir, final_result_filename)
+            ffmpeg_bin = get_ffmpeg_binary()
+
+            # If FFmpeg is available, write raw frames to an intermediate file and transcode to H.264
+            if ffmpeg_bin:
+                raw_filename = f"{analysis_id}_raw.mp4"
+                raw_path = os.path.join(result_dir, raw_filename)
+                target_writer_path = raw_path
+            else:
+                target_writer_path = result_path
+
+            # Attempt to open VideoWriter using supported codecs
+            # Avoid "avc1" / "H264" in OpenCV VideoWriter to prevent OpenH264 DLL loading errors.
+            # Frames are written cleanly with mp4v and then transcoded to browser-compliant H.264 via FFmpeg.
+            codecs_to_try = ["mp4v", "XVID", "MJPG"]
+            for codec in codecs_to_try:
+                try:
+                    fourcc = cv2.VideoWriter_fourcc(*codec)
+                    w = cv2.VideoWriter(target_writer_path, fourcc, fps, (width, height))
+                    if w and w.isOpened():
+                        writer = w
+                        break
+                    if w:
+                        w.release()
+                except Exception:
+                    pass
+
+            if not writer or not writer.isOpened():
                 raise ValueError("Could not create the processed video output. Check codec and output permissions.")
 
             # Aggregate counts across frames
@@ -120,17 +159,19 @@ class VideoService:
             all_detections = []
             total_zone_violations = 0
             frame_idx = 0
+            written_frames = 0
+            first_annotated = None
             last_annotated = None
             latest_safety_alerts = []
             untracked_box_detections = 0
 
             while True:
                 ret, frame = cap.read()
-                if not ret:
+                if not ret or frame is None:
                     break
 
                 if frame_idx % processing_step == 0:
-                    # Track objects
+                    # Track objects on current frame
                     annotated, frame_stats = self.tracker.track_frame(
                         frame,
                         frame_idx,
@@ -201,18 +242,22 @@ class VideoService:
 
                     # Update max counts
                     for key in max_counts:
-                        count_key = key
-                        val = frame_counts.get(count_key, 0)
+                        val = frame_counts.get(key, 0)
                         max_counts[key] = max(max_counts[key], val)
 
+                    if first_annotated is None:
+                        first_annotated = annotated.copy()
                     last_annotated = annotated
                     writer.write(annotated)
+                    written_frames += 1
                 else:
-                    # Write original frame for skipped frames
-                    if last_annotated is not None:
-                        writer.write(last_annotated)
-                    else:
-                        writer.write(frame)
+                    # Draw zones on skipped frame so it doesn't freeze or drop
+                    curr_annotated = self.zone_detector.draw_zones(frame.copy())
+                    if first_annotated is None:
+                        first_annotated = curr_annotated.copy()
+                    last_annotated = curr_annotated
+                    writer.write(curr_annotated)
+                    written_frames += 1
 
                 frame_idx += 1
 
@@ -221,45 +266,64 @@ class VideoService:
                 writer.release()
                 writer = None
 
-            # Generate thumbnail poster from last annotated frame
+            if written_frames == 0:
+                raise ValueError("No video frames could be processed.")
+
+            # Transcode video to H.264 for universal browser playback if ffmpeg is available
+            if ffmpeg_bin and raw_path and os.path.exists(raw_path):
+                cmd = [
+                    ffmpeg_bin, "-y",
+                    "-i", raw_path,
+                    "-r", str(fps),
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart",
+                    result_path,
+                ]
+                proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+                if proc.returncode == 0 and os.path.isfile(result_path) and os.path.getsize(result_path) > 0:
+                    try:
+                        os.remove(raw_path)
+                    except OSError:
+                        pass
+                    logger.info(f"Successfully encoded {final_result_filename} to H.264")
+                else:
+                    err_msg = proc.stderr.decode("utf-8", errors="ignore") if proc.stderr else "Unknown error"
+                    logger.warning(f"FFmpeg transcoding failed ({err_msg}); falling back to raw output")
+                    if os.path.isfile(raw_path):
+                        if os.path.exists(result_path):
+                            try:
+                                os.remove(result_path)
+                            except OSError:
+                                pass
+                        os.rename(raw_path, result_path)
+
+            # Verification of output video file if written to disk
+            if os.path.isfile(result_path):
+                if os.path.getsize(result_path) == 0:
+                    raise ValueError(f"Output video file {final_result_filename} is empty.")
+                verify_cap = cv2.VideoCapture(result_path)
+                if not verify_cap.isOpened():
+                    raise ValueError(f"Final processed video {final_result_filename} cannot be opened by decoder.")
+                out_frame_count = int(verify_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                ret_read, frame_sample = verify_cap.read()
+                verify_cap.release()
+                if not ret_read or frame_sample is None:
+                    raise ValueError(f"Final processed video {final_result_filename} cannot be decoded.")
+                if out_frame_count <= 1 and total_frames > 1 and written_frames > 1:
+                    raise ValueError(f"Processed video has only {out_frame_count} frame(s), expected full video.")
+
+            # Generate thumbnail poster from first (or last) annotated frame
             thumb_filename = f"{analysis_id}_thumb.jpg"
             thumb_path = os.path.join(result_dir, thumb_filename)
             has_thumb = False
-            if last_annotated is not None:
+            thumb_source = first_annotated if first_annotated is not None else last_annotated
+            if thumb_source is not None:
                 try:
-                    has_thumb = bool(cv2.imwrite(thumb_path, last_annotated))
+                    has_thumb = bool(cv2.imwrite(thumb_path, thumb_source))
                 except Exception as e:
                     logger.warning(f"Could not save video thumbnail: {e}")
-
-            # Transcode video to H.264 for universal browser playback if ffmpeg is available
-            final_result_filename = result_filename
-            try:
-                ffmpeg_bin = None
-                try:
-                    import imageio_ffmpeg
-                    ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-                except Exception:
-                    import shutil
-                    ffmpeg_bin = shutil.which("ffmpeg")
-
-                if ffmpeg_bin and os.path.exists(result_path):
-                    h264_filename = f"{analysis_id}_web.mp4"
-                    h264_path = os.path.join(result_dir, h264_filename)
-                    cmd = [
-                        ffmpeg_bin, "-y",
-                        "-i", result_path,
-                        "-c:v", "libx264",
-                        "-preset", "veryfast",
-                        "-pix_fmt", "yuv420p",
-                        "-movflags", "+faststart",
-                        h264_path,
-                    ]
-                    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-                    if proc.returncode == 0 and os.path.exists(h264_path) and os.path.getsize(h264_path) > 0:
-                        final_result_filename = h264_filename
-                        logger.info(f"Successfully transcoded {result_filename} to H.264 {h264_filename}")
-            except Exception as ex:
-                logger.warning(f"Video transcoding skipped: {ex}")
 
             # Get tracking summary
             tracking_summary = self.tracker.get_summary()
@@ -343,8 +407,20 @@ class VideoService:
 
             processing_time = round(time.time() - start_time, 2)
 
+            processed_video_url = (
+                f"/api/box-tracking/{analysis_id}/result"
+                if counting_engine
+                else f"/api/analysis/{analysis_id}/video"
+            )
+            thumbnail_url = (
+                f"/api/box-tracking/{analysis_id}/thumbnail"
+                if counting_engine
+                else (f"/api/analysis/{analysis_id}/thumbnail" if has_thumb else None)
+            )
+
             result = {
                 "analysis_id": analysis_id,
+                "media_type": "video",
                 "status": "completed",
                 "processing_time": processing_time,
                 "object_counts": final_counts,
@@ -353,12 +429,14 @@ class VideoService:
                 "safety_alerts": latest_safety_alerts,
                 "safety_alerts_count": len(all_incidents),
                 "safety_incidents": all_incidents,
-                "result_path": f"/results/videos/{final_result_filename}",
-                "thumbnail_path": f"/results/videos/{thumb_filename}" if has_thumb else None,
+                "processed_video_url": processed_video_url,
+                "result_path": processed_video_url,
+                "video_filename": final_result_filename,
+                "thumbnail_path": thumbnail_url,
                 "video_info": {
                     "fps": fps,
                     "total_frames": total_frames,
-                    "processed_frames": tracking_summary.get("processed_frames", 0),
+                    "processed_frames": tracking_summary.get("processed_frames", written_frames),
                     "width": width,
                     "height": height,
                     "duration_seconds": round(total_frames / fps, 1) if fps > 0 else 0,
@@ -383,10 +461,6 @@ class VideoService:
                     "output_filename": final_result_filename,
                     "thumbnail_filename": thumb_filename if has_thumb else None,
                 }
-                result["result_path"] = f"/api/box-tracking/{analysis_id}/result"
-                result["thumbnail_path"] = (
-                    f"/api/box-tracking/{analysis_id}/thumbnail" if has_thumb else None
-                )
             return result
 
         except Exception as e:
@@ -395,7 +469,7 @@ class VideoService:
             if writer:
                 writer.release()
                 writer = None
-            for partial_path in (result_path, thumb_path, h264_path):
+            for partial_path in (result_path, thumb_path, raw_path):
                 if partial_path and os.path.isfile(partial_path):
                     try:
                         os.remove(partial_path)
@@ -403,6 +477,7 @@ class VideoService:
                         logger.warning("Could not remove partial output %s: %s", partial_path, cleanup_error)
             return {
                 "analysis_id": analysis_id,
+                "media_type": "video",
                 "status": "failed",
                 "processing_time": processing_time,
                 "error_message": str(e),

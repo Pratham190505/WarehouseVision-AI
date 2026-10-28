@@ -147,6 +147,8 @@ class ProcessingService:
                 "error_message": f"Unsupported media type: {media_type}",
             }
 
+        result["media_type"] = media_type
+
         # Save result to MongoDB
         self._save_result(analysis_id, result, media_type)
 
@@ -174,6 +176,8 @@ class ProcessingService:
             "status": result.get("status", "completed"),
             "processing_time": result.get("processing_time", 0),
             "result_path": result.get("result_path"),
+            "processed_video_url": result.get("processed_video_url") or result.get("result_path"),
+            "video_filename": result.get("video_filename"),
             "thumbnail_path": result.get("thumbnail_path"),
             "error_message": result.get("error_message"),
             "object_counts": result.get("object_counts", {}),
@@ -288,6 +292,7 @@ class ProcessingService:
                         "object_counts": 1,
                         "analytics": 1,
                         "result_path": 1,
+                        "processed_video_url": 1,
                         "thumbnail_path": 1,
                         "box_tracking": 1,
                         "unique_boxes_tracked": 1,
@@ -363,6 +368,15 @@ class ProcessingService:
                     bt_path = BOX_TRACKING_RESULT_DIR / bt_fname
                     if bt_path.is_file():
                         paths_to_clean.append(str(bt_path))
+
+        video_filename = target_doc.get("video_filename")
+        if video_filename and isinstance(video_filename, str):
+            v_path = RESULT_DIR / "videos" / video_filename
+            if v_path.is_file():
+                paths_to_clean.append(str(v_path))
+        for vid_cand in (RESULT_DIR / "videos").glob(f"{analysis_id}*"):
+            if vid_cand.is_file():
+                paths_to_clean.append(str(vid_cand))
 
         for p in paths_to_clean:
             try:

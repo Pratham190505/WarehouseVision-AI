@@ -597,7 +597,7 @@ const Dashboard = (() => {
         ChartsManager.updateAll(data);
 
         // Detection result
-        if (data.result_path) {
+        if (data.result_path || data.processed_video_url) {
             showResultMedia(data);
         }
 
@@ -623,7 +623,9 @@ const Dashboard = (() => {
         if (!els.resultSection) return;
         els.resultSection.classList.add('visible');
 
-        const isVideo = (data.media_type === 'video') || (data.result_path && data.result_path.includes('/videos/'));
+        const isVideo = (data.media_type === 'video') ||
+                        Boolean(data.processed_video_url) ||
+                        (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')));
         const fileName = data.original_filename || data.filename || '';
 
         if (els.resultTitle) {
@@ -634,17 +636,16 @@ const Dashboard = (() => {
 
         if (els.resultMedia) {
             if (isVideo) {
-                const videoSrc = data.result_path || '';
-                const posterSrc = data.thumbnail_path || '';
+                const videoSrc = data.processed_video_url || data.result_path || '';
                 els.resultMedia.innerHTML = `
                     <div style="position:relative;width:100%;background:#090D16;border-radius:var(--radius-md);overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.25);">
-                        <video id="mainResultVideo" controls playsinline preload="auto" ${posterSrc ? `poster="${posterSrc}"` : ''} style="width:100%;max-height:600px;display:block;">
+                        <video id="mainResultVideo" controls preload="metadata" playsinline style="width:100%;max-height:600px;display:block;">
                             <source src="${videoSrc}" type="video/mp4">
-                            Your browser does not support the video tag.
+                            Your browser does not support HTML5 video.
                         </video>
                         <div style="padding:10px 14px;background:var(--bg-input);border-top:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
                             <span style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
-                                <span>📹</span> Processed Video with Bounding Boxes & Object Tracking
+                                <span>📹</span> Full Processed Video with Dynamic Computer Vision Overlays
                             </span>
                             <a href="${videoSrc}" download class="view-btn" style="text-decoration:none;padding:5px 12px;font-size:12px;display:inline-flex;align-items:center;gap:4px;">
                                 <span>⬇️</span> Download Video
@@ -652,6 +653,10 @@ const Dashboard = (() => {
                         </div>
                     </div>
                 `;
+                setTimeout(() => {
+                    const vid = document.getElementById('mainResultVideo');
+                    if (vid) vid.load();
+                }, 50);
             } else {
                 els.resultMedia.innerHTML = `
                     <div style="position:relative;width:100%;border-radius:var(--radius-md);overflow:hidden;">
@@ -940,16 +945,18 @@ const Dashboard = (() => {
 
             let html = '<div style="display:flex;flex-direction:column;gap:var(--space-md);">';
 
-            const isVideo = (data.media_type === 'video') || (data.result_path && data.result_path.includes('/videos/'));
+            const isVideo = (data.media_type === 'video') ||
+                            Boolean(data.processed_video_url) ||
+                            (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')));
 
             // Result image/video
-            if (data.result_path) {
+            const videoUrl = data.processed_video_url || data.result_path || '';
+            if (data.result_path || data.processed_video_url) {
                 if (isVideo) {
-                    const posterSrc = data.thumbnail_path || '';
                     html += `
                         <div style="background:#090D16;border-radius:var(--radius-md);overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,0.3);">
-                            <video id="modalVideoPlayer" controls playsinline preload="auto" ${posterSrc ? `poster="${posterSrc}"` : ''} style="width:100%;max-height:500px;display:block;">
-                                <source src="${data.result_path}" type="video/mp4">
+                            <video id="modalVideoPlayer" controls preload="metadata" playsinline style="width:100%;max-height:500px;display:block;">
+                                <source src="${videoUrl}" type="video/mp4">
                                 Your browser does not support the video tag.
                             </video>
                         </div>

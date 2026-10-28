@@ -1,3 +1,4 @@
+import uuid
 """
 Comprehensive Tests for WarehouseVision AI API & Authentication System.
 
@@ -41,7 +42,7 @@ class TestHealthEndpoint:
 class TestAuthenticationFlow:
     """Tests for registration, login, logout, and protected routes."""
 
-    test_user_email = "tester_warehouse@example.com"
+    test_user_email = f"tester_{uuid.uuid4().hex[:8]}@example.com"
     test_user_pwd = "SecurePassword123!"
 
     def test_unauthenticated_dashboard_redirects_to_login(self):
@@ -164,7 +165,7 @@ class TestUserScopedAnalytics:
         # Register User A
         client_a.post("/api/auth/signup", json={
             "name": "User Alpha",
-            "email": "alpha@example.com",
+            "email": f"alpha_{uuid.uuid4().hex[:8]}@example.com",
             "password": "Password123!",
             "confirm_password": "Password123!",
         })
@@ -172,7 +173,7 @@ class TestUserScopedAnalytics:
         # Register User B
         client_b.post("/api/auth/signup", json={
             "name": "User Beta",
-            "email": "beta@example.com",
+            "email": f"beta_{uuid.uuid4().hex[:8]}@example.com",
             "password": "Password123!",
             "confirm_password": "Password123!",
         })
@@ -202,7 +203,7 @@ class TestUserScopedAnalytics:
         auth_client = TestClient(app, follow_redirects=False)
         auth_client.post("/api/auth/signup", json={
             "name": "Video Operator",
-            "email": "videotrack@example.com",
+            "email": f"videotrack_{uuid.uuid4().hex[:8]}@example.com",
             "password": "Password123!",
             "confirm_password": "Password123!",
         })
@@ -239,7 +240,7 @@ class TestUserProfileSettings:
         auth_client = TestClient(app, follow_redirects=False)
         auth_client.post("/api/auth/signup", json={
             "name": "Original Name",
-            "email": "settings_val@example.com",
+            "email": f"settings_val_{uuid.uuid4().hex[:8]}@example.com",
             "password": "Password123!",
             "confirm_password": "Password123!",
         })
@@ -253,7 +254,7 @@ class TestUserProfileSettings:
         auth_client = TestClient(app, follow_redirects=False)
         auth_client.post("/api/auth/signup", json={
             "name": "Initial Name",
-            "email": "settings_update@example.com",
+            "email": f"settings_update_{uuid.uuid4().hex[:8]}@example.com",
             "password": "Password123!",
             "confirm_password": "Password123!",
         })
