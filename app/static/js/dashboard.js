@@ -673,9 +673,9 @@ const Dashboard = (() => {
         if (!els.resultSection) return;
         els.resultSection.classList.add('visible');
 
-        const isVideo = (data.media_type === 'video') ||
-                        Boolean(data.processed_video_url) ||
-                        (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')));
+        const isVideo = data.media_type === 'video' ||
+                        (!data.media_type && (Boolean(data.processed_video_url) ||
+                        (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')))));
         const fileName = data.original_filename || data.filename || '';
 
         const incidents = Array.isArray(data.safety_incidents) ? data.safety_incidents : [];
@@ -1018,9 +1018,9 @@ const Dashboard = (() => {
 
             let html = '<div style="display:flex;flex-direction:column;gap:var(--space-md);">';
 
-            const isVideo = (data.media_type === 'video') ||
-                            Boolean(data.processed_video_url) ||
-                            (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')));
+            const isVideo = data.media_type === 'video' ||
+                            (!data.media_type && (Boolean(data.processed_video_url) ||
+                            (data.result_path && (data.result_path.includes('/videos/') || data.result_path.includes('/video')))));
 
             // Result image/video
             const videoUrl = data.processed_video_url || data.result_path || '';

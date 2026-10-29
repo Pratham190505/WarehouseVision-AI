@@ -349,3 +349,32 @@ class TestDashboardFrontendAndImageHandling:
         # Verify image rendering branch is preserved
         assert "<img src=\"${data.result_path}\"" in content
         assert "Annotated Image with AI Detections" in content
+        assert "data.media_type === 'video'" in content
+
+    def test_image_results_do_not_persist_processed_video_url(self):
+        """Image result records must not expose a video URL to the dashboard."""
+        service = get_processing_service()
+        user_id = f"image_user_{uuid.uuid4().hex[:8]}"
+        analysis_id = service.create_analysis(
+            filename="warehouse.jpg",
+            original_filename="warehouse.jpg",
+            media_type="image",
+            file_size=100,
+            media_path="/tmp/warehouse.jpg",
+            user_id=user_id,
+        )
+
+        service._save_result(
+            analysis_id=analysis_id,
+            result={
+                "status": "completed",
+                "result_path": "/results/images/warehouse_annotated.jpg",
+                "object_counts": {},
+                "analytics": {},
+            },
+            media_type="image",
+        )
+
+        record = service.get_analysis(analysis_id, user_id=user_id)
+        assert record["media_type"] == "image"
+        assert record.get("processed_video_url") is None

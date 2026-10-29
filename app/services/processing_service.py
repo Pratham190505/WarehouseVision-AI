@@ -176,7 +176,6 @@ class ProcessingService:
             "status": result.get("status", "completed"),
             "processing_time": result.get("processing_time", 0),
             "result_path": result.get("result_path"),
-            "processed_video_url": result.get("processed_video_url") or result.get("result_path"),
             "video_filename": result.get("video_filename"),
             "thumbnail_path": result.get("thumbnail_path"),
             "error_message": result.get("error_message"),
@@ -190,6 +189,13 @@ class ProcessingService:
                 "insights": result.get("analytics", {}).get("insights", []),
             },
         }
+
+        # Only videos have a processed video URL. Keeping this field absent for
+        # images prevents clients from rendering an annotated image as a video.
+        if media_type == "video":
+            update_data["processed_video_url"] = (
+                result.get("processed_video_url") or result.get("result_path")
+            )
 
         # Add tracking data for videos
         if media_type == "video" and "tracking" in result:
